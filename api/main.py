@@ -1,7 +1,24 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+
+ml_models = {}
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("--- Server Starting ---")
+    print("Loading ML Models...")
+
+    ml_models["poker_bot"] = "Agent_v0_Maniac (Loaded in Memory)"
+
+
+    print("ML Models Loaded.")
+    yield
+
+    ml_models.clear()
+    print("server shutting down, resources cleaned up.")
+    print("model cleared from memory")
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 
@@ -19,9 +36,12 @@ def health_check():
 
 @app.post("/get_action")
 def get_bot_action(state: GameState):
-    print(f"Recieved hand: {state.hand} with pot: {state.pot_size}")
+    active_brain = ml_models.get("poker_bot")
+    print(f"Using model: {active_brain} to get action for state: {state}")
+
+    calculated_action = "Raise"
 
     return {
-        "bot_action": "Raise",
-        "explaination": "Dummy Response."
+        "bot_action": calculated_action,
+        "explaination": active_brain
     }
