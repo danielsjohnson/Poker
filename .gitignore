@@ -1,0 +1,17 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch Model Weights
+*.pth
+*.pt
+
+# Virtual Environments
+venv/
+env/
+
+# MLflow and Database local storage
+mlflow_artifacts/
+postgres_data/
+mlruns/
