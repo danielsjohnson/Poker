@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+import torch
+from agent.agent import DQN
 
 
 ml_models = {}
@@ -8,10 +10,11 @@ ml_models = {}
 async def lifespan(app: FastAPI):
     print("--- Server Starting ---")
     print("Loading ML Models...")
+    bot = DQN(input_size=44, output_size=7)
+    bot.load_state_dict(torch.load("models/agent_v0_maniac.pth", map_location=torch.device('cpu')))
+    bot.eval()
 
-    ml_models["poker_bot"] = "Agent_v0_Maniac (Loaded in Memory)"
-
-
+    ml_models["poker_bot"] = bot
     print("ML Models Loaded.")
     yield
 
@@ -20,7 +23,6 @@ async def lifespan(app: FastAPI):
     print("model cleared from memory")
 app = FastAPI(lifespan=lifespan)
 
-@app.get("/")
 
 
 class GameState(BaseModel):
