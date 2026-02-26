@@ -48,5 +48,5 @@ def get_bot_action(state: GameState):
 
     return {
         "bot_action": calculated_action,
-        "explaination": active_brain
+        "action_index": action_index
     }
