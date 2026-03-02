@@ -5,10 +5,11 @@ from engine.player import humanPlayer
 from engine.player import aiPlayer
 from engine.table import Table
 from engine.hand_detection import Hand_Detection
+from engine.metrics import MetricsTracker
 
 
 class Game():
-    def __init__(self, table):
+    def __init__(self, table, tracker: MetricsTracker = None):
         self.deck = Deck()
         self.judge = Hand_Detection()
         self.players = []
@@ -23,6 +24,7 @@ class Game():
         self.table: "Table" = table
         self.last_raise_amount = 0
         self.street = 0
+        self.tracker = tracker
         self.ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
         self.suits = ['H', 'S', 'D', 'C']
         self.hand_rankings = [
@@ -112,6 +114,9 @@ class Game():
             player.total_bet = 0
             player.clear_hand()
             player.all_in = False
+
+        if self.tracker:
+            self.tracker.on_hand_start(self.players)
             
         self.postBlinds()
         self.preflop()
@@ -260,6 +265,8 @@ class Game():
             winner = self.active[0]
             winner.updateChips(self.table.pot)
             self.table.pot = 0
+            if self.tracker:
+                self.tracker.on_hand_end(self.players)
             return
         
         self.showdown()
@@ -280,6 +287,8 @@ class Game():
                 w.updateChips(win_amount)
         
         self.table.pot = 0
+        if self.tracker:
+            self.tracker.on_hand_end(self.players)
 
     def incrementButton(self):
         self.button = ((self.button + 1 ) % len(self.players))
@@ -351,6 +360,8 @@ class Game():
     def execute_action(self, action):
         player = self.active[self.current_player_index]
         amount_to_call = self.table.current_bet - player.bet_in_round
+        if self.tracker:
+            self.tracker.on_action(player.name, self.street, action, amount_to_call)
 
         if action == 0:
             self.folded(player)
