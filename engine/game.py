@@ -25,6 +25,7 @@ class Game():
         self.last_raise_amount = 0
         self.street = 0
         self.tracker = tracker
+        self.hand_over = False
         self.ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
         self.suits = ['H', 'S', 'D', 'C']
         self.hand_rankings = [
@@ -150,6 +151,7 @@ class Game():
     
     def resetGame(self):
         self.current_player_index = 0
+        self.hand_over = False
         self.current_player = None
         self.last_raiser = None
         self.turns_taken = 0
@@ -261,6 +263,9 @@ class Game():
             player.final_hand = tuple(player.final_hand)
 
     def end_game(self):
+        if self.hand_over == False:
+            return
+        self.hand_over = True
         if len(self.active) == 1:
             winner = self.active[0]
             winner.updateChips(self.table.pot)
