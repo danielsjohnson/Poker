@@ -134,6 +134,72 @@ def sample_villain_type() -> str:
         return "punisher"
 
 
+def evaluate_against_villain(agent: Agent, villain_policy) -> dict:
+    """Runs a fixed number of hands against a specific villain with zero exploration."""
+    EVAL_HANDS = 1000
+
+    # Create an isolated sandbox environment
+    eval_table = Table()
+    eval_tracker = MetricsTracker(big_blind=20)
+    eval_game = Game(eval_table, tracker=eval_tracker)
+
+    eval_game.players = [
+        humanPlayer("Hero", eval_table),
+        humanPlayer("Villain", eval_table)
+    ]
+
+    # Save current agent exploration rate to restore later
+    original_epsilon = agent.epsilon
+    agent.epsilon = 0.0  # Zero exploration for accurate evaluation
+    agent.policy_net.eval()  # Ensure network is in eval mode
+
+    for _ in range(EVAL_HANDS):
+        if eval_game.players[0].chips <= 0 or eval_game.players[1].chips <= 0:
+            for p in eval_game.players:
+                p.chips = STACK_SIZE
+
+        state = eval_game.reset()
+        done = False
+
+        while not done:
+            curr_idx = eval_game.current_player_index
+            valid_actions = eval_game.get_valid_actions()
+
+            if curr_idx == 0:
+                # Hero selects best known action
+                with torch.no_grad():
+                    action = agent.select_action(state, valid_actions)
+                next_state, _, done = eval_game.step(action)
+                state = next_state
+            else:
+                ctx = DecisionContext(
+                    valid_actions=valid_actions,
+                    state=state,
+                    hand=eval_game.players[1].hand,
+                    community=eval_game.table.community,
+                    to_call=eval_game.table.current_bet - eval_game.players[1].bet_in_round,
+                    pot=eval_game.table.pot,
+                    street=eval_game.street,
+                    hero_bet_in_round=eval_game.players[0].bet_in_round,
+                )
+                action = villain_policy.select_action(ctx)
+                next_state, _, done = eval_game.step(action)
+                state = next_state
+
+    agent.epsilon = original_epsilon
+    agent.policy_net.train()
+
+    hero_stats = eval_tracker.stats.get("Hero")
+    if hero_stats:
+        return {
+            "bb_100": hero_stats.bb_per_100(),
+            "vpip": hero_stats.vpip_pct(),
+            "pfr": hero_stats.pfr_pct(),
+            "af": hero_stats.aggression_factor()
+        }
+    return {}
+
+
 
 def main():
     opponent_distribution = """
@@ -303,8 +369,32 @@ def main():
 
             total_profit = 0
 
-        if episode % 50000 == 0 and episode > 0:
-            torch.save(agent.policy_net.state_dict(), f"checkpoint_{episode}.pth")
+            if episode % 50000 == 0 and episode > 0:
+                print(f"\n--- Running Evaluation Gauntlet (Episode {episode}) ---")
+
+                gauntlet = {
+                    "station": CallingStationPolicy(),
+                    "police": PoliceV1Policy(police),
+                    "pressure": PressureV1Policy(pressure),
+                    "punisher": PunisherV1Policy(punisher)
+                }
+
+                for villain_name, policy in gauntlet.items():
+                    print(f"  Evaluating vs {villain_name.upper()}...")
+                    results = evaluate_against_villain(agent, policy)
+
+                    if results:
+                        # Log metrics prefixed by the villain's name
+                        mlflow.log_metric(f"eval_vs_{villain_name}_bb100", results["bb_100"], step=episode)
+                        mlflow.log_metric(f"eval_vs_{villain_name}_vpip", results["vpip"], step=episode)
+                        mlflow.log_metric(f"eval_vs_{villain_name}_pfr", results["pfr"], step=episode)
+                        mlflow.log_metric(f"eval_vs_{villain_name}_af", results["af"], step=episode)
+
+                        print(f"    -> Winrate: {results['bb_100']:.2f} BB/100 | VPIP: {results['vpip']:.1f}%")
+
+                print("--- Evaluation Complete ---\n")
+
+                torch.save(agent.policy_net.state_dict(), f"checkpoint_{episode}.pth")
 
     print("Training Complete.")
     mlflow.end_run()
