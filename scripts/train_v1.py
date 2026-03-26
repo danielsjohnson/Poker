@@ -1,40 +1,157 @@
-import torch
-from engine.game import Game
-from engine.table import Table
-from engine.player import humanPlayer
-from agent.agent import Agent
 import random
-from agent.calling_station_v0 import calling_station_action
-from agent.police_bot_v0 import PoliceBot
+from dataclasses import dataclass
+from typing import List, Protocol, Dict
+
 import mlflow
+import torch
+
+from engine.game import Game
+from engine.metrics import MetricsTracker
+from engine.player import humanPlayer
+from engine.table import Table
+
+from agent.agent import Agent
+from agent.calling_station_v0 import calling_station_action
+from agent.police_bot_v1 import PoliceBot
+from agent.pressure_bot_v1 import PressureBot
+from agent.punisher_bot_v1 import PunisherBot
+from agent.trap_bot_v1 import TrapBot
 
 EPISODES = 1500000
 STACK_SIZE = 1000
 TARGET_UPDATE = 1000
-RESUME_FILE_PATH = ("poker_agent_v1.pth")
+RESUME_FILE_PATH = None
+
+
+@dataclass(frozen=True)
+class DecisionContext:
+    valid_actions: List[int]
+    state: List[float]
+    hand: list
+    community: list
+    to_call: int
+    pot: int
+    street: int
+    hero_bet_in_round: int    # game.players[0].bet_in_round
+
+
+class OpponentPolicy(Protocol):
+    def select_action(self, ctx: DecisionContext) -> int:
+        ...
+
+
+class CallingStationPolicy:
+    def select_action(self, ctx: DecisionContext) -> int:
+        return calling_station_action(ctx.valid_actions)
+
+
+class PoliceV1Policy:
+    def __init__(self, bot: PoliceBot):
+        self.bot = bot
+
+    def select_action(self, ctx: DecisionContext) -> int:
+        return self.bot.select_action(
+            ctx.valid_actions,
+            ctx.hand,
+            ctx.community,
+            ctx.to_call,
+            ctx.pot
+        )
+
+
+class PunisherV1Policy:
+    def __init__(self, bot: PunisherBot):
+        self.bot = bot
+
+    def select_action(self, ctx: DecisionContext) -> int:
+        return self.bot.select_action(
+            ctx.valid_actions,
+            ctx.hand,
+            ctx.community,
+            ctx.to_call,
+            ctx.pot,
+            ctx.street,
+            ctx.hero_bet_in_round
+        )
+
+
+class TrapV1Policy:
+    def __init__(self, bot: TrapBot):
+        self.bot = bot
+
+    def select_action(self, ctx: DecisionContext) -> int:
+        return self.bot.select_action(
+            ctx.valid_actions,
+            ctx.hand,
+            ctx.community,
+            ctx.to_call,
+            ctx.pot,
+            ctx.street,
+            ctx.hero_bet_in_round
+        )
+
+
+class PressureV1Policy:
+    def __init__(self, bot: PressureBot):
+        self.bot = bot
+
+    def select_action(self, ctx: DecisionContext) -> int:
+        return self.bot.select_action(
+            ctx.valid_actions,
+            ctx.hand,
+            ctx.community,
+            ctx.to_call,
+            ctx.pot,
+            ctx.street,
+            ctx.hero_bet_in_round
+        )
+
+
+class SelfPlayPolicy:
+    def __init__(self, agent: Agent):
+        self.agent = agent
+
+    def select_action(self, ctx: DecisionContext) -> int:
+        return self.agent.select_action(ctx.state, ctx.valid_actions)
+
+def sample_villain_type() -> str:
+    """
+    Opponent Distribution for Exploitative Training:
+      station (Loose-Passive):  40%
+      police (Tight-Passive):   20%
+      pressure (Loose-Aggro):   20%
+      punisher (Tight-Aggro):   20%
+      self:                     0%  (Disabled for pure exploitative training)
+    """
+    roll = random.random()
+    if roll < 0.40:
+        return "station"
+    elif roll < 0.60:
+        return "police"
+    elif roll < 0.80:
+        return "pressure"
+    else:
+        return "punisher"
+
 
 
 def main():
+    opponent_distribution = """
+      station:  45%
+      punisher: 20%
+      pressure: 15%
+      punisher: 10%
+      self:     0%
+    """
     agent = Agent(input_size=44, output_size=7)
     mlflow.set_tracking_uri("http://localhost:5000")
     mlflow.set_experiment("poker_agent_v1")
     mlflow.start_run(run_name="training_run")
-    mlflow.log_params({
-        "episodes_target": EPISODES,
-        "stack_size": STACK_SIZE,
-        "target_update_freq": TARGET_UPDATE,
-        "batch_size": agent.batch_size,
-        "gamma": agent.gamma,
-        "epsilon_decay": agent.epsilon_decay,
-        "learning_rate": agent.learning_rate
-
-    })
-
-
 
     print("Setting up the table...")
     table = Table()
-    game = Game(table)
+    tracker = MetricsTracker(big_blind=20)
+    game = Game(table, tracker=tracker)
 
     p1 = humanPlayer("Hero", table)
     p2 = humanPlayer("Villain", table)
@@ -44,9 +161,24 @@ def main():
     input_size = len(initial_state)
     print(f"State Size: {input_size}")
 
+    agent = Agent(input_size=44, output_size=7)
+
+    punisher = PunisherBot()
+    trap = TrapBot()
+    pressure = PressureBot()
     police = PoliceBot()
 
-    agent = Agent(input_size=44, output_size=7)
+    mlflow.log_params({
+        "episodes_target": EPISODES,
+        "stack_size": STACK_SIZE,
+        "target_update_freq": TARGET_UPDATE,
+        "batch_size": agent.batch_size,
+        "gamma": agent.gamma,
+        "epsilon_decay": agent.epsilon_decay,
+        "learning_rate": agent.learning_rate,
+        "opponent_distribution": opponent_distribution
+
+    })
 
     try:
 
@@ -64,29 +196,31 @@ def main():
         print(">>> WARNING: Save file not found. Starting from scratch.")
         start_episode = 0
 
+    policies: Dict[str, OpponentPolicy] = {
+        "station": CallingStationPolicy(),
+        "police": PoliceV1Policy(police),
+        "punisher": PunisherV1Policy(punisher),
+        "trap": TrapV1Policy(trap),
+        "pressure": PressureV1Policy(pressure),
+        "self": SelfPlayPolicy(agent),
+    }
+
     print("Starting Training...")
 
     total_profit = 0
-    best_profit = -float('inf')
-
-    villain_type = "station"
 
     for episode in range(start_episode, EPISODES):
         if game.players[0].chips <= 0 or game.players[1].chips <= 0:
             for p in game.players:
                 p.chips = STACK_SIZE
 
-        roll = random.random()
-        if roll < 0.30:
-            villain_type = "station"
-        elif roll < 0.60:
-            villain_type = "self"
-        else:
-            villain_type = "police"
+        villain_type = sample_villain_type()
+        villain_policy = policies[villain_type]
 
         state = game.reset()
         hero = game.players[0]
         starting_stack = hero.chips
+
         hero_state = None
         hero_action = None
         hero_stack_at_action = 0
@@ -99,7 +233,6 @@ def main():
             if curr_player_index == 0:
                 if hero_state is not None:
                     reward = hero.chips - hero_stack_at_action
-
                     agent.memory.append((hero_state, hero_action, reward, state, False))
                     agent.optimize_model()
 
@@ -119,23 +252,27 @@ def main():
             else:
                 villain_hand = game.players[1].hand
                 villain_to_call = game.table.current_bet - game.players[1].bet_in_round
+                villain_community = game.table.community
 
-                if villain_type == "station":
-                    action = calling_station_action(valid_actions)
+                ctx = DecisionContext(
+                    valid_actions=valid_actions,
+                    state=state,
+                    hand=villain_hand,
+                    community=villain_community,
+                    to_call=villain_to_call,
+                    pot=game.table.pot,
+                    street=game.street,
+                    hero_bet_in_round=game.players[0].bet_in_round,
+                )
 
-                elif villain_type == "police":
-                    action = police.select_action(valid_actions, villain_hand, villain_to_call)
-
-                else:
-                    action = agent.select_action(state, valid_actions)
+                action = villain_policy.select_action(ctx)
 
                 next_state, _, done = game.step(action)
 
-                if done:
-                    if hero_state is not None:
-                        reward = hero.chips - hero_stack_at_action
-                        agent.memory.append((hero_state, hero_action, reward, None, True))
-                        agent.optimize_model()
+                if done and hero_state is not None:
+                    reward = hero.chips - hero_stack_at_action
+                    agent.memory.append((hero_state, hero_action, reward, None, True))
+                    agent.optimize_model()
 
                 state = next_state
 
@@ -156,6 +293,13 @@ def main():
 
             mlflow.log_metric("avg_profit", avg_profit, step=episode)
             mlflow.log_metric(key='epsilon', value=agent.epsilon, step=episode)
+
+            hero_stats = tracker.stats.get("Hero")
+            if hero_stats:
+                mlflow.log_metric("hero_vpip", hero_stats.vpip_pct(), step=episode)
+                mlflow.log_metric("hero_pfr", hero_stats.pfr_pct(), step=episode)
+                mlflow.log_metric("hero_af", hero_stats.aggression_factor(), step=episode)
+                mlflow.log_metric("hero_bb_100", hero_stats.bb_per_100(), step=episode)
 
             total_profit = 0
 
