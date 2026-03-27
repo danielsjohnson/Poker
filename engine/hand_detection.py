@@ -48,22 +48,25 @@ class Hand_Detection():
             hand.sort(reverse=True)
             return ("Pair", high_pair.rank) + tuple(hand[i] for i in range(0,3))
         return False
-        
-     
+
     def isTwoPair(self):
         pairs = []
         for i in range(len(self.total_hand)):
-            for j in range(i+1,len(self.total_hand)):
+            for j in range(i + 1, len(self.total_hand)):
                 if self.total_hand[i] == self.total_hand[j]:
                     pairs.append(self.total_hand[i])
+
         pairs = sorted(set(pairs), reverse=True)
-        hand = []
-        for card in self.total_hand:
-            if card not in pairs:
-                hand.append(card)
-        hand.sort(reverse=True)
+
         if len(pairs) >= 2:
+            hand = []
+            for card in self.total_hand:
+                if card != pairs[0] and card != pairs[1]:
+                    hand.append(card)
+
+            hand.sort(reverse=True)
             return ("Two Pair", pairs[0].rank, pairs[1].rank) + (hand[0].rank,)
+
         return False
     
     def isTrips(self):
