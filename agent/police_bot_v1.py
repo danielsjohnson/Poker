@@ -74,14 +74,26 @@ class PoliceBot:
         # --- 3. POST-FLOP STRATEGY (Real Awareness) ---
         else:
             # Detect Hand Strength
-            # Assuming find_hand returns int 0-9 (0=HighCard, 1=Pair, 2=TwoPair...)
-            # If your detector returns a tuple (rank_val, high_card), adapt below:
             result = self.detector.find_hand(hand, community_cards)
-            
-            strength = 0
-            if isinstance(result, tuple): strength = result[0]
-            else: strength = result
 
+            # Extract the string name of the hand (handles both raw strings and tuples)
+            hand_name = result[0] if isinstance(result, tuple) else result
+
+            # Map the string name to an integer strength
+            hand_rank_map = {
+                "HighCard": 0,
+                "Pair": 1,
+                "Two Pair": 2,
+                "Trips": 3,
+                "Straight": 4,
+                "Flush": 5,
+                "Full House": 6,
+                "Quads": 7,
+                "StraightFlush": 8,
+                "RoyalFlush": 9
+            }
+
+            strength = hand_rank_map.get(hand_name, 0)
             # LOGIC:
             
             # 1. STRONG (Two Pair or Better) -> BET/RAISE
