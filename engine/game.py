@@ -263,7 +263,7 @@ class Game():
             player.final_hand = tuple(player.final_hand)
 
     def end_game(self):
-        if self.hand_over == False:
+        if self.hand_over == True:
             return
         self.hand_over = True
         if len(self.active) == 1:
