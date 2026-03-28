@@ -30,6 +30,15 @@ services:
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: poker_api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mlflow
 volumes:
   postgres_data:
   mlflow_artifacts:
