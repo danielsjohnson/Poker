@@ -20,7 +20,7 @@ from agent.trap_bot_v1 import TrapBot
 EPISODES = 1500000
 STACK_SIZE = 1000
 TARGET_UPDATE = 1000
-RESUME_FILE_PATH = None
+RESUME_FILE_PATH = "N/A"
 
 
 @dataclass(frozen=True)
@@ -203,11 +203,12 @@ def evaluate_against_villain(agent: Agent, villain_policy) -> dict:
 
 def main():
     opponent_distribution = """
-      station:  45%
-      punisher: 20%
-      pressure: 15%
-      punisher: 10%
-      self:     0%
+    Opponent Distribution :
+      station (Loose-Passive):  40%
+      police (Tight-Passive):   20%
+      pressure (Loose-Aggro):   20%
+      punisher (Tight-Aggro):   20%
+      self:                     0%  
     """
     agent = Agent(input_size=44, output_size=7)
     mlflow.set_tracking_uri("http://localhost:5000")
@@ -255,7 +256,7 @@ def main():
 
         agent.epsilon = 0.05
 
-        start_episode = 0
+        start_episode = 26000
         print(f">>> SUCCESS: Resuming from Episode {start_episode}")
 
     except FileNotFoundError:
@@ -369,7 +370,7 @@ def main():
 
             total_profit = 0
 
-            if episode % 50000 == 0 and episode > 0:
+            if episode % 1000 == 0 and episode > 0:
                 print(f"\n--- Running Evaluation Gauntlet (Episode {episode}) ---")
 
                 gauntlet = {
