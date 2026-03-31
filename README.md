@@ -40,6 +40,7 @@ Rather than solely focusing on the Reinforcement Learning mathematics, this repo
 Training a reinforcement learning agent in a high-variance environment with imperfect information (Texas Hold'em) presents unique challenges. The v0 bot was trained for about 1.5 million hands against rule based bots the rule based bots: *Station* (Passive/Loose), *Police* (Tight/ABC).  The v1 model is in development, training against a curriculum of four distinct rule-based baseline bots: *Station* (Passive/Loose), *Police* (Tight/ABC), *Pressure* (Aggressive), and *Punisher* (Hyper-Aggressive).
 
 ![img.png](img.png)
+(Note: The above graph is a smoothed moving average of the winrate (in BB/100) against the tight/ABC bot across 300k hands during the training of v1. Metrics are logged to MLflow every 10,000 hands, and the graph is generated from the MLflow dashboard.)
 **Key MLflow Insights:**
 1. **The Exploitation Plateau:** By episode 150,000, the model successfully escaped the negative-profit exploration phase. It learned to highly exploit passive opponents, achieving a winrate of **+70.20 BB/100** against the tight/ABC bot by aggressively stealing blinds and capitalizing on folds.
 2. **Catastrophic Forgetting & Policy Churn:** Smoothed MLflow metrics revealed training instability around episode 200,000. As the exploration rate (`epsilon`) floored at 5%, the network began over-fitting to whichever specific bot it was currently facing in the evaluation loop. This caused it to overwrite generalized weights, resulting in policy churn. 
