@@ -24,4 +24,4 @@ def calling_station_action(valid_actions):
     if valid_actions[6] == 1:
         return 6
         
-    return 1
+    return 0
