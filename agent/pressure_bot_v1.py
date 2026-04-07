@@ -220,8 +220,11 @@ class PressureBot:
                 return 5
             if valid_actions[3] == 1:
                 return 3
+            if valid_actions[6] == 1:
+                return 6
             if valid_actions[2] == 1:
                 return 2
+            return 0  # CRITICAL FALLBACK FIX
 
         # Medium hands: Call or raise occasionally
         elif strength == 'medium':
@@ -242,7 +245,7 @@ class PressureBot:
 
         # Weak hands: Fold to pressure, but don't over-fold
         else:
-            # Bluff-raise occasionally (10%) to keep opponent honest
+            # Bluff-raise occasionally (10%) to keep honest
             if random.random() < 0.1 and to_call <= pot * 0.5:
                 if valid_actions[3] == 1:
                     return 3
@@ -295,5 +298,7 @@ class PressureBot:
             if valid_actions[1] == 1:
                 return 1
 
-        return 0 if valid_actions[0] == 1 else 1
-
+        # CRITICAL FALLBACK FIX
+        if valid_actions[1] == 1:
+            return 1
+        return 0
