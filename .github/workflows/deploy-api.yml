@@ -29,7 +29,6 @@ jobs:
           context: .
           file: Dockerfile.api
           push: true
-          # Using a consistent hardcoded tag to avoid Docker casing errors
           tags: ghcr.io/danielsjohnson/poker-api:latest
 
   deploy_to_ec2:
@@ -47,14 +46,15 @@ jobs:
           # Fail the script immediately if any command returns a non-zero status
           set -e
           
-          # (Requires adding a Personal Access Token to GitHub Secrets as GHCR_PAT)
-          echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u danielsjohnson --password-stdin
-          
+          # 1. Clean up unused/dangling images to free up space BEFORE pulling
           docker image prune -a -f
           
+          # 2. Pull the newly built image (No login required for public packages!)
           docker pull ghcr.io/danielsjohnson/poker-api:latest
           
+          # 3. Gracefully stop and remove the old container
           docker stop running_poker_api || true
           docker rm running_poker_api || true
           
+          # 4. Start the new brain on port 8000
           docker run -d -p 8000:8000 --name running_poker_api ghcr.io/danielsjohnson/poker-api:latest
