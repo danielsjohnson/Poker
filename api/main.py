@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
     bot.eval()
 
     ml_models["poker_bot"] = bot
+    ml_models["active_model_path"] = model_path
     print("ML Models Loaded.")
     yield
 
@@ -53,6 +54,14 @@ class GameState(BaseModel):
 def health_check():
     return {"status": "ok", "version": " 1.1 - Automated"}
 
+@app.get("/model-info")
+async def get_model_info():
+    # 'model_path' is the variable where we stored the latest file path during startup
+    return {
+        "active_model": ml_models.get("active_model_path", "unknown"),
+        "status": "online",
+        "deployment_type": "automated"
+    }
 @app.post("/get_action")
 def get_bot_action(state: GameState):
     active_brain = ml_models.get("poker_bot")
