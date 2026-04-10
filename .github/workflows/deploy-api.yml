@@ -29,6 +29,7 @@ jobs:
           context: .
           file: Dockerfile.api
           push: true
+          # Using a consistent hardcoded tag to avoid Docker casing errors
           tags: ghcr.io/danielsjohnson/poker-api:latest
 
   deploy_to_ec2:
@@ -43,14 +44,17 @@ jobs:
         username: ${{ secrets.EC2_USERNAME }}
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
-          # Pull the new image from GitHub
-          docker pull ghcr.io/${{ github.repository_owner }}/poker-api:latest
+          # Fail the script immediately if any command returns a non-zero status
+          set -e
           
-          # Stop the old container (if it exists)
+          # (Requires adding a Personal Access Token to GitHub Secrets as GHCR_PAT)
+          echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u danielsjohnson --password-stdin
+          
+          docker image prune -a -f
+          
+          docker pull ghcr.io/danielsjohnson/poker-api:latest
+          
           docker stop running_poker_api || true
-          
-          # Remove the old container
           docker rm running_poker_api || true
           
-          # Start the new container on port 8000
-          docker run -d -p 8000:8000 --name running_poker_api ghcr.io/${{ github.repository_owner }}/poker-api:latest
+          docker run -d -p 8000:8000 --name running_poker_api ghcr.io/danielsjohnson/poker-api:latest
