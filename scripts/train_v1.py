@@ -20,7 +20,7 @@ from agent.trap_bot_v1 import TrapBot
 EPISODES = 1500000
 STACK_SIZE = 1000
 TARGET_UPDATE = 1000
-RESUME_FILE_PATH = "N/A"
+RESUME_FILE_PATH = "checkpoint_300000.pth"
 
 
 @dataclass(frozen=True)
@@ -256,7 +256,7 @@ def main():
 
         agent.epsilon = 0.05
 
-        start_episode = 26000
+        start_episode = 300000
         print(f">>> SUCCESS: Resuming from Episode {start_episode}")
 
     except FileNotFoundError:
