@@ -8,6 +8,10 @@ jobs:
   build_and_push:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      packages: write
+
     steps:
     - name: Checkout out repository
       uses: actions/checkout@v4
@@ -25,7 +29,7 @@ jobs:
           context: .
           file: Dockerfile.api
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/poker-api:latest
+          tags: ghcr.io/danielsjohnson/poker-api:latest
 
   deploy_to_ec2:
     needs: build_and_push
