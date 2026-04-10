@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 # PyTorch Model Weights
-*.pth
+#*.pth
 *.pt
 
 # Virtual Environments
