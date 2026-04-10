@@ -32,7 +32,7 @@ class GameState(BaseModel):
 
 @app.get("/")
 def health_check():
-    return {"status": "ok", "version": "1.1 - Automated"}
+    return {"status": "ok", "version": " 1.1 - Automated"}
 
 @app.post("/get_action")
 def get_bot_action(state: GameState):
