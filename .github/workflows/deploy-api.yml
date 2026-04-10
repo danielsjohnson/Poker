@@ -26,3 +26,27 @@ jobs:
           file: Dockerfile.api
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/poker-api:latest
+
+  deploy_to_ec2:
+    needs: build_and_push
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Execute deployment commands on EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          # Pull the new image from GitHub
+          docker pull ghcr.io/${{ github.repository_owner }}/poker-api:latest
+          
+          # Stop the old container (if it exists)
+          docker stop running_poker_api || true
+          
+          # Remove the old container
+          docker rm running_poker_api || true
+          
+          # Start the new container on port 8000
+          docker run -d -p 8000:8000 --name running_poker_api ghcr.io/${{ github.repository_owner }}/poker-api:latest
