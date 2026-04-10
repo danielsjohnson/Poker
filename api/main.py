@@ -3,7 +3,24 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import torch
 from agent.agent import DQN
+import os
+import glob
+import re
 
+
+def get_highest_version_model(model_dir="models"):
+    list_of_files = glob.glob(os.path.join(model_dir, "*.pth"))
+
+    if not list_of_files:
+        raise FileNotFoundError(f"No .pth model files found in {model_dir}")
+
+    def extract_version(filepath):
+        filename = os.path.basename(filepath)
+        version_parts = re.findall(r'\d+', filename)
+        return tuple(map(int, version_parts)) if version_parts else (0,)
+
+    highest_version_file = max(list_of_files, key=extract_version)
+    return highest_version_file
 
 ml_models = {}
 @asynccontextmanager
@@ -11,7 +28,9 @@ async def lifespan(app: FastAPI):
     print("--- Server Starting ---")
     print("Loading ML Models...")
     bot = DQN(input_size=44, output_size=7)
-    bot.load_state_dict(torch.load("models/agent_v0_maniac.pth", map_location=torch.device('cpu')))
+    model_path = get_highest_version_model()
+    print(f"🚀 Deploying highest version found: {model_path}")
+    bot.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     bot.eval()
 
     ml_models["poker_bot"] = bot
