@@ -1,89 +1,90 @@
 # 🃏 MLOps Pipeline: Deep Q-Network Agent for Texas Hold'em
 
-![CI/CD Pipeline](https://github.com/danielsjohnson/Poker/actions/workflows/lint.yml/badge.svg)
+![CI/CD Pipeline](https://github.com/danielsjohnson/Poker/actions/workflows/deploy_api.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.12-blue.svg)
 ![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED.svg)
+![AWS](https://img.shields.io/badge/AWS-EC2-FF9900.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-Serving-009688.svg)
 
 This project implements an end-to-end MLOps pipeline for training, tracking, and serving a Deep Q-Network (DQN) agent capable of playing Heads-Up No-Limit Texas Hold’em. 
 
-Rather than solely focusing on the Reinforcement Learning mathematics, this repository emphasizes industry-standard systems engineering. The project utilizes **Docker** for containerization, **MLflow** for experiment tracking, and **FastAPI** for real-time model serving, completely decoupling the training environment from the production API.
+Built with an **AI Platform Engineering** mindset, this repository emphasizes industry-standard systems architecture over isolated algorithmic experiments. The environment utilizes **Docker** for containerization, **MLflow** with a PostgreSQL backend for experiment tracking, **GitHub Actions** for CI/CD, and **FastAPI** for real-time model serving on **AWS EC2**. This architecture completely decouples the PyTorch training environment from the highly available production API.
 
 ## 🏗️ Architecture & Infrastructure
 
-* **Continuous Integration & Deployment (GitHub Actions):** Automated CI/CD pipelines enforce code quality (via Flake8) and automatically build/push production-ready Docker images on every commit to the main branch.
-* **Experiment Tracking (MLflow & PostgreSQL):** All training runs, hyperparameter tuning, and opponent-specific evaluations are logged to a local MLflow tracking server backed by a PostgreSQL database.
-* **Model Serving (FastAPI):** Trained PyTorch `.pth` weights are loaded into a REST API, allowing client applications to request inference (game actions) via JSON payloads without requiring local PyTorch installations.
-* **Containerization (Docker Compose):** The entire system—database, tracking server, and inference API—is containerized and orchestrated via Docker Compose for complete local reproducibility.
-
-## 🗂️ Project Structure
-
-```text
-├── .github/workflows/   # CI/CD automation pipelines
-├── agent/               # DQN model architecture, replay buffer, and logic
-├── api/                 # FastAPI application, routing, and schemas
-├── engine/              # Texas Hold'em game mechanics and baseline bots
-├── scripts/             # Training and evaluation orchestration
-├── docker-compose.yml   # Multi-container orchestration
-├── Dockerfile           # Environment definition for the API
-└── requirements.txt     # Dependency management
-```
-
-## 🛠️ Tech Stack
-* **Deployment & Tracking:** Docker, Docker Compose, MLflow, PostgreSQL, GitHub Actions
-* **API & Backend:** Python 3.12, FastAPI, Uvicorn
-* **Machine Learning:** PyTorch (DQN), Reinforcement Learning, Curriculum Learning
+* **Cloud Deployment (AWS EC2):** The production environment is hosted on an Amazon EC2 instance, providing a scalable compute environment for the containerized stack. Traffic is routed to the inference API, allowing remote clients to request real-time poker actions.
+* **Continuous Integration & Deployment (GitHub Actions):** Automated CI/CD pipelines enforce code quality via Flake8 and seamlessly build/push production-ready Docker images on every commit to the main branch.
+* **Containerization (Docker Compose):** The entire application lifecycle is containerized. A single `docker-compose.yml` orchestrates the PostgreSQL database (`poker_db`), the MLflow server (`poker_mlflow`), and the FastAPI backend (`poker_api`) for guaranteed parity between local and EC2 environments.
+* **Dynamic Model Serving (FastAPI):** The REST API is built on Python 3.12 and Uvicorn. Upon startup, the API's lifespan context manager automatically scans the volume for the highest version `.pth` model and dynamically loads the latest PyTorch weights into memory without requiring manual code updates. 
+* **Experiment Tracking (MLflow & PostgreSQL):** Hyperparameter tuning, loss metrics, and opponent-specific win rates are logged to an MLflow tracking server backed by a persistent PostgreSQL database.
 
 ---
 
-## 📊 Model Analysis & Training Dynamics
+## 📊 Model Analysis: Distribution Shift & The Exploitation Trap
 
-Training a reinforcement learning agent in a high-variance environment with imperfect information (Texas Hold'em) presents unique challenges. The v0 bot was trained for about 1.5 million hands against rule based bots the rule based bots: *Station* (Passive/Loose), *Police* (Tight/ABC).  The v1 model is in development, training against a curriculum of four distinct rule-based baseline bots: *Station* (Passive/Loose), *Police* (Tight/ABC), *Pressure* (Aggressive), and *Punisher* (Hyper-Aggressive).
+Training a reinforcement learning agent in a high-variance environment with imperfect information presents unique challenges. In the v1 training loop, the bot was evaluated across 780,000 episodes using an asymmetric, exploitative curriculum distribution:
+* **Station** (Loose-Passive): 40%
+* **Police** (Tight-Passive): 20%
+* **Pressure** (Loose-Aggressive): 20%
+* **Punisher** (Tight-Aggressive): 20%
 
-![img.png](img.png)
-(Note: The above graph is a smoothed moving average of the winrate (in BB/100) against the tight/ABC bot across 300k hands during the training of v1. Metrics are logged to MLflow every 10,000 hands, and the graph is generated from the MLflow dashboard.)
-**Key MLflow Insights:**
-1. **The Exploitation Plateau:** By episode 150,000, the model successfully escaped the negative-profit exploration phase. It learned to highly exploit passive opponents, achieving a winrate of **+70.20 BB/100** against the tight/ABC bot by aggressively stealing blinds and capitalizing on folds.
-2. **Catastrophic Forgetting & Policy Churn:** Smoothed MLflow metrics revealed training instability around episode 200,000. As the exploration rate (`epsilon`) floored at 5%, the network began over-fitting to whichever specific bot it was currently facing in the evaluation loop. This caused it to overwrite generalized weights, resulting in policy churn. 
-3. **Future Iterations:** To mitigate catastrophic forgetting in v2, the architecture will be updated to include a larger Replay Buffer and Prioritized Experience Replay (PER) to ensure the network continuously trains on older, diverse game states.
+[add (Winrate graph for Station and Police bots climbing) here]
+
+**1. The Exploitation Plateau (Successes)**
+During the initial phases, the model successfully escaped the negative-profit exploration phase. By capitalizing on the fact that 60% of its opponents were passive, the agent learned highly exploitative strategies (e.g., relentless value betting and stealing blinds), achieving massive win rates against the `Station` and `Police` bots.
+
+[add (Winrate graph for Pressure and Punisher bots declining) here]
+
+**2. Catastrophic Forgetting & Replay Buffer Saturation**
+As the profits against passive bots soared, performance against the aggressive `Pressure` and `Punisher` bots collapsed. By hardcoding the opponent distribution to 60% passive, the Replay Buffer became saturated with passive game states (e.g., limps and check-downs). The exact strategy that crushed the passive bots (value betting light) was mathematically disastrous against aggressive bots that frequently check-raise all-in. Because the aggressive states were rarely sampled in the PyTorch mini-batches, the network's weights were overwritten by the passive-bot updates. The model literally "forgot" how to navigate aggression.
+
+### 🛠️ Architectural Fixes for v2
+To stabilize win rates across all opponent types and ensure the bot generalizes without catastrophic forgetting, the v2 pipeline will implement the following MLOps and RL architecture upgrades:
+* **Dynamic Curriculum Sampling:** Instead of a static 40/20/20/20 split, the training loop will dynamically sample opponents inversely proportional to the bot's current win rate against them, forcing the network to continuously train against its biggest weaknesses.
+* **Segregated Replay Buffers:** Maintaining separate replay buffers for each opponent type and forcing the PyTorch data loader to pull an equal number of samples from *each* buffer during every mini-batch update to prevent policy overwrite.
+* **Prioritized Experience Replay (PER):** Ensuring the network samples experiences with the highest Temporal Difference (TD) error (e.g., hands lost to the `Punisher` bot) rather than uniformly sampling the easily beaten `Station` bot.
 
 ---
 
-## 🚀 How to Run (Local Deployment)
+## 🚀 Deployment & Usage
 
-To spin up the entire infrastructure locally, ensure Docker is installed on your machine and run:
+### Spinning up the Stack
+Whether deploying locally or on your EC2 instance, the infrastructure is provisioned with a single command:
 
 ```bash
-docker-compose up --build
+docker-compose up --build -d
 ```
-This command provisions the network and launches three containers:
-1. `poker_db`: PostgreSQL database for tracking metadata.
-2. `poker_mlflow`: MLflow server (accessible at `http://localhost:5000`).
-3. `poker_api`: FastAPI model serving endpoint (accessible at `http://localhost:8000`).
+This launches three interconnected containers:
 
-### Pinging the Inference API
-Once the containers are running, you can request an action from the production bot by sending a game state vector to the API.
+poker_db: PostgreSQL database for tracking metadata on port 5432.
 
-**For Mac/Linux (curl):**
+poker_mlflow: MLflow server on port 5000.
+
+poker_api: FastAPI model serving endpoint on port 8000.
+
+Interacting with the RESTful API
+You can verify the currently deployed automated model via the health check:
+
+```bash
+curl -X 'GET' 'http://<YOUR_EC2_IP>:8000/model-info'
+```
+To request an inference action from the bot, send a state vector and a valid actions mask as a JSON payload to the /get_action endpoint.
+
+Example Inference Request:
 ```bash
 curl -X 'POST' \
-  'http://localhost:8000/get_action' \
+  'http://<YOUR_EC2_IP>:8000/get_action' \
   -H 'Content-Type: application/json' \
   -d '{
   "state_vector": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
   "valid_actions": [1, 1, 1, 0, 0, 0, 0]
 }'
 ```
-
-**For Windows (PowerShell):**
-```powershell
-Invoke-RestMethod -Uri "http://localhost:8000/get_action" `
-  -Method Post `
-  -Headers @{ "Content-Type" = "application/json" } `
-  -Body '{"state_vector": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "valid_actions": [1, 1, 1, 0, 0, 0, 0]}'
-```
-
----
-
+Expected JSON Response:
+{
+  "bot_action": "Check",
+  "action_index": 1
+}
 
 Architecture:
 
@@ -101,24 +102,6 @@ Architecture:
 
 🎯 Design Philosophy
 
-Instead of training exclusively via self-play, this project emphasizes:
-
-1. Exploitative Learning
-
-The agent is optimized to beat novice-style players rather than converge to equilibrium.
-
-2. Curriculum Learning
-
-Opponents are introduced in stages to shape specific behavioral traits.
-
-3. Adversarial Opponent Design
-
-Bots are intentionally constructed to expose weaknesses such as:
-
-Over-aggression
-
-Spew bluffs
-
-Blind continuation betting
+Instead of training exclusively via self-play to converge on a GTO (Game Theory Optimal) equilibrium, this system is heavily geared toward Exploitative Learning and Curriculum Learning to expose specific opponent weaknesses (e.g., over-aggression, spew bluffs, blind continuation betting).
 
 *Authored by Daniel Scott Johnson | Computer Science @ California State University, Long Beach*
