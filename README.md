@@ -28,12 +28,24 @@ Training a reinforcement learning agent in a high-variance environment with impe
 * **Pressure** (Loose-Aggressive): 20%
 * **Punisher** (Tight-Aggressive): 20%
 
-[add (Winrate graph for Station and Police bots climbing) here]
+(VS. Station BB/100)
+
+![Winrate against Station](station_graph.png)
+
+(VS. Police BB/100)
+
+
+![Winrate against Police](police_graph.png)
 
 **1. The Exploitation Plateau (Successes)**
 During the initial phases, the model successfully escaped the negative-profit exploration phase. By capitalizing on the fact that 60% of its opponents were passive, the agent learned highly exploitative strategies (e.g., relentless value betting and stealing blinds), achieving massive win rates against the `Station` and `Police` bots.
 
-[add (Winrate graph for Pressure and Punisher bots declining) here]
+(VS. Pressure BB/100)
+![Winrate against Pressure](pressure_graph.png)
+
+(VS. Punisher BB/100)
+
+![Winrate against Punisher](punisher_graph.png)
 
 **2. Catastrophic Forgetting & Replay Buffer Saturation**
 As the profits against passive bots soared, performance against the aggressive `Pressure` and `Punisher` bots collapsed. By hardcoding the opponent distribution to 60% passive, the Replay Buffer became saturated with passive game states (e.g., limps and check-downs). The exact strategy that crushed the passive bots (value betting light) was mathematically disastrous against aggressive bots that frequently check-raise all-in. Because the aggressive states were rarely sampled in the PyTorch mini-batches, the network's weights were overwritten by the passive-bot updates. The model literally "forgot" how to navigate aggression.
@@ -73,7 +85,7 @@ To request an inference action from the bot, send a state vector and a valid act
 Example Inference Request:
 ```bash
 curl -X 'POST' \
-  'http://<YOUR_EC2_IP>:8000/get_action' \
+  'http://<3.18.106.156>:8000/get_action' \
   -H 'Content-Type: application/json' \
   -d '{
   "state_vector": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
