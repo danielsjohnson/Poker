@@ -157,6 +157,7 @@ class Game():
         self.current_player = None
         self.last_raiser = None
         self.turns_taken = 0
+        self.last_raise_amount = 0
         self.incrementButton()
 
     def preflop(self):
@@ -288,10 +289,23 @@ class Game():
             elif player.final_hand == best_hand:
                 winners.append(player)
         
-        if len(winners) > 0:
-            win_amount = self.table.pot // len(winners)
-            for w in winners:
-                w.updateChips(win_amount)
+        if len(winners) == 1:
+            winner = winners[0]
+            loser = self.players[0] if self.players[0] is not winner else self.players[1]
+            
+            c_winner = winner.total_bet + winner.bet_in_round
+            c_loser = loser.total_bet + loser.bet_in_round
+            
+            win_amount = c_winner + min(c_winner, c_loser)
+            return_amount = max(0, c_loser - c_winner)
+            
+            winner.updateChips(win_amount)
+            if return_amount > 0:
+                loser.updateChips(return_amount)
+        elif len(winners) == 2:
+            for player in self.players:
+                c_player = player.total_bet + player.bet_in_round
+                player.updateChips(c_player)
         
         self.table.pot = 0
         if self.tracker:
@@ -363,6 +377,9 @@ class Game():
         if self.street == 1: self.flop()
         elif self.street == 2: self.turn()
         elif self.street == 3: self.river()
+        
+        if len(self.active) >= 2 and self.street <= 3 and sum(1 for p in self.active if p.chips > 0) <= 1:
+            self.advance_street()
     
     def execute_action(self, action):
         player = self.active[self.current_player_index]
