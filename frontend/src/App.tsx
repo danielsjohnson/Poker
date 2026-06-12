@@ -1,5 +1,5 @@
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, Play, RotateCcw } from "lucide-react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Cpu, Loader2, Play, RotateCcw, User } from "lucide-react";
 import { dealNextHand, retryBotTurn, startGame, submitAction } from "./api/client";
 import type { Card, GameSnapshot, PlayerView } from "./types/game";
 
@@ -10,6 +10,74 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Animation states
+  const [animateHeroBet, setAnimateHeroBet] = useState(false);
+  const [animateOpponentBet, setAnimateOpponentBet] = useState(false);
+  const [animateSweep, setAnimateSweep] = useState(false);
+  const [animatePotWin, setAnimatePotWin] = useState<"human" | "bot" | "split" | null>(null);
+
+  const prevGameRef = useRef<GameSnapshot | null>(null);
+
+  useEffect(() => {
+    if (!game) {
+      prevGameRef.current = null;
+      return;
+    }
+
+    let t1: ReturnType<typeof setTimeout> | undefined;
+    let t2: ReturnType<typeof setTimeout> | undefined;
+    let t3: ReturnType<typeof setTimeout> | undefined;
+    let t4: ReturnType<typeof setTimeout> | undefined;
+
+    if (prevGameRef.current && prevGameRef.current.sessionId === game.sessionId) {
+      const prevHero = prevGameRef.current.players.find((p) => p.role === "human");
+      const prevBot = prevGameRef.current.players.find((p) => p.role === "bot");
+      const currHero = game.players.find((p) => p.role === "human");
+      const currBot = game.players.find((p) => p.role === "bot");
+
+      const prevHeroBet = prevHero?.betInRound ?? 0;
+      const prevBotBet = prevBot?.betInRound ?? 0;
+      const currHeroBet = currHero?.betInRound ?? 0;
+      const currBotBet = currBot?.betInRound ?? 0;
+
+      // 1. Bet increase
+      if (currHeroBet > prevHeroBet) {
+        setAnimateHeroBet(true);
+        t1 = setTimeout(() => setAnimateHeroBet(false), 600);
+      }
+      if (currBotBet > prevBotBet) {
+        setAnimateOpponentBet(true);
+        t2 = setTimeout(() => setAnimateOpponentBet(false), 600);
+      }
+
+      // 2. Pot sweep
+      const potIncreased = game.pot > prevGameRef.current.pot;
+      const hadBets = prevHeroBet > 0 || prevBotBet > 0;
+      const betsCleared = currHeroBet === 0 && currBotBet === 0;
+
+      if (potIncreased && hadBets && betsCleared) {
+        setAnimateSweep(true);
+        t3 = setTimeout(() => setAnimateSweep(false), 850);
+      }
+
+      // 3. Pot win
+      const handJustEnded = game.isHandOver && !prevGameRef.current.isHandOver;
+      if (handJustEnded && game.result?.winner) {
+        setAnimatePotWin(game.result.winner);
+        t4 = setTimeout(() => setAnimatePotWin(null), 1200);
+      }
+    }
+
+    prevGameRef.current = game;
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
+  }, [game]);
 
   async function loadNewGame() {
     setError(null);
@@ -108,12 +176,45 @@ function App() {
       <section className="felt-table" aria-live="polite">
         <div className="table-rail">
           <div className="table-layout">
+            {/* Sweep Animation */}
+            {animateSweep && (
+              <div className="pot-sweep-container">
+                <div className="sweep-chip hero-sweep-1" />
+                <div className="sweep-chip hero-sweep-2" />
+                <div className="sweep-chip hero-sweep-3" />
+                <div className="sweep-chip opponent-sweep-1" />
+                <div className="sweep-chip opponent-sweep-2" />
+                <div className="sweep-chip opponent-sweep-3" />
+              </div>
+            )}
+
+            {/* Pot Win Animation */}
+            {animatePotWin && (
+              <div className="pot-win-container">
+                <div className={`win-chip chip-1 winner-${animatePotWin}`} />
+                <div className={`win-chip chip-2 winner-${animatePotWin}`} />
+                <div className={`win-chip chip-3 winner-${animatePotWin}`} />
+                <div className={`win-chip chip-4 winner-${animatePotWin}`} />
+                <div className={`win-chip chip-5 winner-${animatePotWin}`} />
+              </div>
+            )}
+
             <div className="table-zone opponent-zone">
-              {pokerBot && <Seat player={pokerBot} position="opponent" />}
+              {pokerBot && (
+                <Seat
+                  player={pokerBot}
+                  position="opponent"
+                  animateBet={animateOpponentBet}
+                  isWinner={Boolean(game?.isHandOver && (game.result?.winner === "bot" || game.result?.winner === "split"))}
+                  isSplit={game?.result?.winner === "split"}
+                  isHandOver={game?.isHandOver}
+                />
+              )}
             </div>
 
             <div className="table-zone board-zone">
               <div className="board-row">
+                <div className="pot-spacer" aria-hidden="true" />
                 <div className="community-cards">
                   {boardCards.map((card, index) => (
                     <PlayingCard
@@ -133,10 +234,19 @@ function App() {
             </div>
 
             <div className="table-zone hero-zone">
-              {human && <Seat player={human} position="hero" />}
+              {human && (
+                <Seat
+                  player={human}
+                  position="hero"
+                  animateBet={animateHeroBet}
+                  isWinner={Boolean(game?.isHandOver && (game.result?.winner === "human" || game.result?.winner === "split"))}
+                  isSplit={game?.result?.winner === "split"}
+                  isHandOver={game?.isHandOver}
+                />
+              )}
             </div>
           </div>
-          {game && <ActionLog game={game} />}
+          {game && <ActionLog key={game.history.length} game={game} />}
         </div>
       </section>
 
@@ -152,7 +262,21 @@ function App() {
   );
 }
 
-function Seat({ player, position }: { player: PlayerView; position: "opponent" | "hero" }) {
+function Seat({
+  player,
+  position,
+  animateBet = false,
+  isWinner = false,
+  isSplit = false,
+  isHandOver = false,
+}: {
+  player: PlayerView;
+  position: "opponent" | "hero";
+  animateBet?: boolean;
+  isWinner?: boolean;
+  isSplit?: boolean;
+  isHandOver?: boolean;
+}) {
   const cards = position === "opponent"
     ? player.cards.length
       ? player.cards
@@ -160,25 +284,69 @@ function Seat({ player, position }: { player: PlayerView; position: "opponent" |
     : player.cards;
 
   return (
-    <section className={`seat ${position} ${player.status === "acting" ? "acting" : ""}`}>
+    <section className={`seat ${position} ${player.status === "acting" ? "acting" : ""} ${player.status === "all-in" ? "all-in" : ""} ${player.status === "folded" ? "folded" : ""} ${isWinner ? "winner" : ""}`}>
       {position === "hero" && <RoundBet amount={player.betInRound} />}
       <div className="seat-row">
         {player.isButton && <span className="position-marker" aria-label="Dealer button">D</span>}
+        
+        {player.status === "all-in" && (
+          <div className="all-in-plaque" aria-label="All-in plaque">
+            <div className="all-in-text">
+              <div>ALL</div>
+              <div>IN</div>
+            </div>
+          </div>
+        )}
+
+        {player.status === "folded" && (
+          <div className="fold-stamp" aria-hidden="true">
+            FOLD
+          </div>
+        )}
+
+        {isWinner && (
+          <div className="winner-badge" aria-label="Winner badge">
+            {isSplit ? "SPLIT POT" : "WINNER"}
+            {player.handName && <span className="winner-hand-desc"> • {player.handName}</span>}
+          </div>
+        )}
+
+        {isHandOver && !isWinner && player.status !== "folded" && player.handName && (
+          <div className="hand-badge" aria-label="Showdown hand">
+            {player.handName}
+          </div>
+        )}
+
         <div className="seat-cards">
           {cards.map((card, index) => (
             <PlayingCard
               key={card ? card.code : `${player.id}-hidden-${index}`}
               card={card}
               hidden={position === "opponent" && !card}
+              dealIndex={index}
             />
           ))}
         </div>
         <div className="seat-stack">
-          <strong>{position === "opponent" ? "Opponent" : "You"}</strong>
-          <span>{player.chips}</span>
+          <div className="seat-avatar" aria-hidden="true">
+            {position === "opponent" ? <Cpu size={16} /> : <User size={16} />}
+          </div>
+          <div className="seat-details">
+            <strong>{position === "opponent" ? "Opponent" : "You"}</strong>
+            <span>{player.chips}</span>
+          </div>
         </div>
       </div>
       {position === "opponent" && <RoundBet amount={player.betInRound} />}
+
+      {/* Bet Animation Chips */}
+      {animateBet && (
+        <div className="flying-chips-container">
+          <div className="flying-chip chip-1" />
+          <div className="flying-chip chip-2" />
+          <div className="flying-chip chip-3" />
+        </div>
+      )}
     </section>
   );
 }
@@ -193,26 +361,28 @@ function RoundBet({ amount }: { amount: number }) {
 }
 
 function ActionLog({ game }: { game: GameSnapshot }) {
-  const events = game.history
+  const lastEvent = game.history
     .filter((event) => event.role !== "dealer")
-    .slice(-5)
-    .reverse();
+    .slice(-1)[0] ?? null;
+
+  const getActionClass = (action: string) => {
+    const act = action.toLowerCase();
+    if (act.includes("fold")) return "action-fold";
+    if (act.includes("check") || act.includes("call")) return "action-passive";
+    return "action-aggressive"; // bet, raise, all-in, pot, etc.
+  };
 
   return (
-    <aside className="action-log" aria-label="Recent actions">
-      <strong>Action</strong>
-      {events.length ? (
-        <ol>
-          {events.map((event, index) => (
-            <li key={`${event.actor}-${event.street}-${event.action}-${index}`}>
-              <span>{event.role === "bot" ? "Opponent" : "You"}</span>
-              <p>
-                {event.action}
-                {event.amount > 0 ? ` ${event.amount}` : ""}
-              </p>
-            </li>
-          ))}
-        </ol>
+    <aside className="action-log" aria-label="Latest action">
+      <strong>Latest Action</strong>
+      {lastEvent ? (
+        <div className={`latest-action-badge ${getActionClass(lastEvent.action)}`}>
+          <span className="actor-name">{lastEvent.role === "bot" ? "Opponent" : "You"}</span>
+          <p className="action-value">
+            {lastEvent.action}
+            {lastEvent.amount > 0 ? ` ${lastEvent.amount}` : ""}
+          </p>
+        </div>
       ) : (
         <p className="empty-log">No actions yet</p>
       )}
@@ -363,36 +533,64 @@ function actionLabel(game: GameSnapshot, actionIndex: number): string {
   return label;
 }
 
+const suitSymbols: Record<string, string> = {
+  H: "♥",
+  D: "♦",
+  C: "♣",
+  S: "♠",
+};
+
 function PlayingCard({
   card,
   hidden = false,
   placeholder = false,
   isBoardCard = false,
   boardIndex = 0,
+  dealIndex,
 }: {
   card?: Card;
   hidden?: boolean;
   placeholder?: boolean;
   isBoardCard?: boolean;
   boardIndex?: number;
+  dealIndex?: number;
 }) {
-  const boardStyle = isBoardCard ? ({ "--deal-delay": `${boardIndex * 90}ms` } as CSSProperties) : undefined;
+  const cardStyle = isBoardCard
+    ? ({ "--deal-delay": `${boardIndex * 90}ms` } as CSSProperties)
+    : dealIndex !== undefined
+      ? ({ "--deal-delay": `${dealIndex * 120}ms` } as CSSProperties)
+      : undefined;
 
   if (hidden) {
-    return <div className="card card-back" aria-label="Face-down card" />;
+    return (
+      <div
+        className="card card-back player-card"
+        aria-label="Face-down card"
+        style={cardStyle}
+      />
+    );
   }
 
   if (!card) {
     return <div className={`card empty-card ${placeholder ? "board-placeholder" : ""}`} aria-label="Empty card slot" />;
   }
 
+  const symbol = suitSymbols[card.suit] ?? card.suit;
+
   return (
     <div
-      className={`card card-face ${redSuits.has(card.suit) ? "red" : "black"} ${isBoardCard ? "board-card" : ""}`}
-      style={boardStyle}
+      className={`card card-face suit-${card.suit.toLowerCase()} ${redSuits.has(card.suit) ? "red" : "black"} ${isBoardCard ? "board-card" : "player-card"}`}
+      style={cardStyle}
     >
-      <span>{card.rank}</span>
-      <strong>{card.suit}</strong>
+      <div className="card-corner top-left">
+        <span className="card-rank">{card.rank}</span>
+        <span className="card-suit">{symbol}</span>
+      </div>
+      <div className="card-center-suit">{symbol}</div>
+      <div className="card-corner bottom-right">
+        <span className="card-rank">{card.rank}</span>
+        <span className="card-suit">{symbol}</span>
+      </div>
     </div>
   );
 }

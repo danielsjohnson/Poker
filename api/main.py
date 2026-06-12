@@ -287,6 +287,16 @@ def player_status(session: PokerSession, player: Player) -> str:
 
 def serialize_player(session: PokerSession, player: Player, role: str) -> dict[str, Any]:
     reveal_cards = role == "human" or session.game.hand_over
+    hand_name = None
+    if session.game.hand_over and player in session.game.active and len(player.hand) == 2:
+        from engine.hand_detection import Hand_Detection
+        judge = Hand_Detection()
+        try:
+            detected = judge.find_hand(player.hand, session.table.community)
+            hand_name = detected[0]
+        except Exception:
+            pass
+
     return {
         "id": role,
         "name": player.name,
@@ -298,6 +308,7 @@ def serialize_player(session: PokerSession, player: Player, role: str) -> dict[s
         "status": player_status(session, player),
         "cards": [serialize_card(card) for card in player.hand] if reveal_cards else [],
         "cardCount": len(player.hand),
+        "handName": hand_name,
     }
 
 

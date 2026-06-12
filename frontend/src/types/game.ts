@@ -20,6 +20,7 @@ export interface PlayerView {
   status: PlayerStatus;
   cards: Card[];
   cardCount: number;
+  handName?: string;
 }
 
 export interface AvailableActions {
