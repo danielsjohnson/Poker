@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.vscode
+.codex-logs
+__pycache__/
+*.pyc
+frontend/node_modules/
+frontend/dist/
+mlflow_artifacts/
+postgres_data/
+mlruns/
+*.pt

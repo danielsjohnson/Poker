@@ -1,7 +1,14 @@
-from engine.game import Game
-from engine.table import Table
-from engine.player import humanPlayer
-from agent.agent import Agent
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from engine.game import Game  # noqa: E402
+from engine.table import Table  # noqa: E402
+from engine.player import humanPlayer  # noqa: E402
+from agent.agent import Agent  # noqa: E402
 
 def main():
     # --- 1. SETUP THE GAME BOARD ---
@@ -45,7 +52,8 @@ def main():
         state = game.get_state()
         
         # B. Ask Agent what to do (will likely be random exploration)
-        action = agent.select_action(state)
+        valid_actions = game.get_valid_actions()
+        action = agent.select_action(state, valid_actions)
         
         # Debug Print
         current_player = game.active[game.current_player_index]

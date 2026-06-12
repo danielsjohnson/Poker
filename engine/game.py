@@ -113,6 +113,8 @@ class Game():
         
         for player in self.players:
             player.total_bet = 0
+            player.bet_in_round = 0
+            player.final_hand = None
             player.clear_hand()
             player.all_in = False
 

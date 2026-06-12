@@ -1,0 +1,12 @@
+services:
+  poker_game:
+    build:
+      context: .
+      dockerfile: Dockerfile.game
+    container_name: poker_game
+    environment:
+      - POKER_BOT_API_URL=${POKER_BOT_API_URL:?Set POKER_BOT_API_URL to the EC2 /get_action endpoint}
+      - POKER_BOT_TIMEOUT_SECONDS=${POKER_BOT_TIMEOUT_SECONDS:-8}
+      - POKER_CORS_ORIGINS=${POKER_CORS_ORIGINS:-*}
+    ports:
+      - "8000:8000"

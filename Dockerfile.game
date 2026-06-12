@@ -1,0 +1,26 @@
+FROM node:24-slim AS frontend-build
+
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.game.txt .
+RUN pip install --no-cache-dir -r requirements.game.txt
+
+COPY api /app/api
+COPY engine /app/engine
+COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
+
+ENV POKER_ENABLE_LOCAL_BOT=false
+
+EXPOSE 8000
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
