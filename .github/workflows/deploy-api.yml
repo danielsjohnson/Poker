@@ -2,7 +2,7 @@ name: deploy-api.yml
 on:
   push:
     branches:
-      - rl-infrastructure-update
+      - main
 
 jobs:
   build_and_push:
