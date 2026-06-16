@@ -7,6 +7,8 @@ const redSuits = new Set(["H", "D"]);
 
 function App() {
   const [game, setGame] = useState<GameSnapshot | null>(null);
+  const [visualGame, setVisualGame] = useState<GameSnapshot | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -18,9 +20,87 @@ function App() {
   const [animatePotWin, setAnimatePotWin] = useState<"human" | "bot" | "split" | null>(null);
 
   const prevGameRef = useRef<GameSnapshot | null>(null);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
+  // Cleanup all timers on unmount
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach((t) => clearTimeout(t));
+      timersRef.current = [];
+    };
+  }, []);
+
+  // Effect to manage the delayed visual game state for all-in runouts
   useEffect(() => {
     if (!game) {
+      setVisualGame(null);
+      setIsAnimating(false);
+      return;
+    }
+
+    // Abort active timers when game changes
+    timersRef.current.forEach((t) => clearTimeout(t));
+    timersRef.current = [];
+
+    // If there is no previous visual game, or it is a new session, or we aren't in a showdown runout:
+    if (!visualGame || visualGame.sessionId !== game.sessionId || !game.isHandOver) {
+      setVisualGame(game);
+      setIsAnimating(false);
+      return;
+    }
+
+    const prevCardCount = visualGame.communityCards.length;
+    const nextCardCount = game.communityCards.length;
+
+    // Check if card count jumped and hand is over (i.e. all-in runout to showdown)
+    if (game.isHandOver && nextCardCount > prevCardCount) {
+      setIsAnimating(true);
+      const steps: Array<{ cards: number; showdown: boolean }> = [];
+
+      if (prevCardCount === 0) {
+        if (nextCardCount >= 3) steps.push({ cards: 3, showdown: false }); // Flop
+        if (nextCardCount >= 4) steps.push({ cards: 4, showdown: false }); // Turn
+        if (nextCardCount >= 5) steps.push({ cards: 5, showdown: false }); // River
+        steps.push({ cards: 5, showdown: true }); // Showdown
+      } else if (prevCardCount === 3) {
+        if (nextCardCount >= 4) steps.push({ cards: 4, showdown: false }); // Turn
+        if (nextCardCount >= 5) steps.push({ cards: 5, showdown: false }); // River
+        steps.push({ cards: 5, showdown: true }); // Showdown
+      } else if (prevCardCount === 4) {
+        if (nextCardCount >= 5) steps.push({ cards: 5, showdown: false }); // River
+        steps.push({ cards: 5, showdown: true }); // Showdown
+      } else {
+        setVisualGame(game);
+        setIsAnimating(false);
+        return;
+      }
+
+      let delay = 0;
+      steps.forEach((step, index) => {
+        const timer = setTimeout(() => {
+          setVisualGame({
+            ...game,
+            communityCards: game.communityCards.slice(0, step.cards),
+            isHandOver: step.showdown,
+            result: step.showdown ? game.result : null,
+          });
+
+          if (index === steps.length - 1) {
+            setIsAnimating(false);
+          }
+        }, delay);
+        timersRef.current.push(timer);
+        delay += 1200; // 1.2s delay between street reveals
+      });
+    } else {
+      setVisualGame(game);
+      setIsAnimating(false);
+    }
+  }, [game]);
+
+  // Effect to manage UI bet/sweep/win micro-animations
+  useEffect(() => {
+    if (!visualGame) {
       prevGameRef.current = null;
       return;
     }
@@ -30,11 +110,11 @@ function App() {
     let t3: ReturnType<typeof setTimeout> | undefined;
     let t4: ReturnType<typeof setTimeout> | undefined;
 
-    if (prevGameRef.current && prevGameRef.current.sessionId === game.sessionId) {
+    if (prevGameRef.current && prevGameRef.current.sessionId === visualGame.sessionId) {
       const prevHero = prevGameRef.current.players.find((p) => p.role === "human");
       const prevBot = prevGameRef.current.players.find((p) => p.role === "bot");
-      const currHero = game.players.find((p) => p.role === "human");
-      const currBot = game.players.find((p) => p.role === "bot");
+      const currHero = visualGame.players.find((p) => p.role === "human");
+      const currBot = visualGame.players.find((p) => p.role === "bot");
 
       const prevHeroBet = prevHero?.betInRound ?? 0;
       const prevBotBet = prevBot?.betInRound ?? 0;
@@ -52,7 +132,7 @@ function App() {
       }
 
       // 2. Pot sweep
-      const potIncreased = game.pot > prevGameRef.current.pot;
+      const potIncreased = visualGame.pot > prevGameRef.current.pot;
       const hadBets = prevHeroBet > 0 || prevBotBet > 0;
       const betsCleared = currHeroBet === 0 && currBotBet === 0;
 
@@ -62,14 +142,14 @@ function App() {
       }
 
       // 3. Pot win
-      const handJustEnded = game.isHandOver && !prevGameRef.current.isHandOver;
-      if (handJustEnded && game.result?.winner) {
-        setAnimatePotWin(game.result.winner);
+      const handJustEnded = visualGame.isHandOver && !prevGameRef.current.isHandOver;
+      if (handJustEnded && visualGame.result?.winner) {
+        setAnimatePotWin(visualGame.result.winner);
         t4 = setTimeout(() => setAnimatePotWin(null), 1200);
       }
     }
 
-    prevGameRef.current = game;
+    prevGameRef.current = visualGame;
 
     return () => {
       clearTimeout(t1);
@@ -77,7 +157,7 @@ function App() {
       clearTimeout(t3);
       clearTimeout(t4);
     };
-  }, [game]);
+  }, [visualGame]);
 
   async function loadNewGame() {
     setError(null);
@@ -95,10 +175,10 @@ function App() {
     void loadNewGame();
   }, []);
 
-  const human = useMemo(() => game?.players.find((player) => player.role === "human") ?? null, [game]);
-  const pokerBot = useMemo(() => game?.players.find((player) => player.role === "bot") ?? null, [game]);
-  const boardCards: Array<Card | undefined> = Array.from({ length: 5 }, (_, index) => game?.communityCards[index]);
-  const isActionLocked = isLoading || busyAction !== null || game?.currentPlayerRole !== "human" || Boolean(game?.botError);
+  const human = useMemo(() => visualGame?.players.find((player) => player.role === "human") ?? null, [visualGame]);
+  const pokerBot = useMemo(() => visualGame?.players.find((player) => player.role === "bot") ?? null, [visualGame]);
+  const boardCards: Array<Card | undefined> = Array.from({ length: 5 }, (_, index) => visualGame?.communityCards[index]);
+  const isActionLocked = isLoading || busyAction !== null || visualGame?.currentPlayerRole !== "human" || Boolean(visualGame?.botError) || isAnimating;
 
   async function handleAction(actionIndex: number, betAmount?: number) {
     if (!game || isActionLocked) {
@@ -153,7 +233,7 @@ function App() {
       <header className="arena-header">
         <div>
           <p>Poker Bot Arena</p>
-          <h1>{game?.street ?? "Loading"}</h1>
+          <h1>{visualGame?.street ?? "Loading"}</h1>
         </div>
         <button className="reset-button" type="button" onClick={loadNewGame} disabled={isLoading}>
           {isLoading ? <Loader2 className="spin" size={18} /> : <RotateCcw size={18} />}
@@ -161,11 +241,11 @@ function App() {
         </button>
       </header>
 
-      {(error || game?.botError) && (
+      {(error || visualGame?.botError) && (
         <section className="error-banner" role="alert">
           <AlertTriangle size={18} />
-          <span>{error ?? game?.botError}</span>
-          {game?.botError && (
+          <span>{error ?? visualGame?.botError}</span>
+          {visualGame?.botError && (
             <button type="button" onClick={handleRetryBot} disabled={isLoading}>
               Retry bot
             </button>
@@ -205,9 +285,9 @@ function App() {
                   player={pokerBot}
                   position="opponent"
                   animateBet={animateOpponentBet}
-                  isWinner={Boolean(game?.isHandOver && (game.result?.winner === "bot" || game.result?.winner === "split"))}
-                  isSplit={game?.result?.winner === "split"}
-                  isHandOver={game?.isHandOver}
+                  isWinner={Boolean(visualGame?.isHandOver && (visualGame.result?.winner === "bot" || visualGame.result?.winner === "split"))}
+                  isSplit={visualGame?.result?.winner === "split"}
+                  isHandOver={visualGame?.isHandOver}
                 />
               )}
             </div>
@@ -228,7 +308,7 @@ function App() {
                 </div>
                 <div className="pot-chip">
                   <span>Pot</span>
-                  <strong>{game?.pot ?? 0}</strong>
+                  <strong>{visualGame?.pot ?? 0}</strong>
                 </div>
               </div>
             </div>
@@ -239,19 +319,19 @@ function App() {
                   player={human}
                   position="hero"
                   animateBet={animateHeroBet}
-                  isWinner={Boolean(game?.isHandOver && (game.result?.winner === "human" || game.result?.winner === "split"))}
-                  isSplit={game?.result?.winner === "split"}
-                  isHandOver={game?.isHandOver}
+                  isWinner={Boolean(visualGame?.isHandOver && (visualGame.result?.winner === "human" || visualGame.result?.winner === "split"))}
+                  isSplit={visualGame?.result?.winner === "split"}
+                  isHandOver={visualGame?.isHandOver}
                 />
               )}
             </div>
           </div>
-          {game && <ActionLog key={game.history.length} game={game} />}
+          {visualGame && <ActionLog key={visualGame.history.length} game={visualGame} />}
         </div>
       </section>
 
       <ActionDock
-        game={game}
+        game={visualGame}
         busyAction={busyAction}
         isLoading={isLoading}
         isLocked={isActionLocked}
