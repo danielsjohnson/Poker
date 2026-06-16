@@ -340,14 +340,14 @@ class Game():
     
     
     def check_endRound(self):
-        active_player = self.active[self.current_player_index]
-        
-        if active_player != self.last_raiser: 
+        if self.turns_taken < len(self.active):
             return False
             
+        max_bet = max(p.bet_in_round for p in self.active)
         for player in self.active:
-            if active_player.bet_in_round != player.bet_in_round:
-                if player.all_in: continue
+            if player.bet_in_round != max_bet:
+                if player.all_in:
+                    continue
                 return False
                 
         return True
@@ -359,14 +359,13 @@ class Game():
         
         self.table.current_bet = 0
         self.last_raise_amount = 0
+        self.last_raiser = None
+        self.turns_taken = 0
 
-        if self.players and self.active:
-            self.last_raiser = self.players[self.button]
-
- 
     def incrementTurn(self):
         if len(self.active) == 0: return
         self.current_player_index = (self.current_player_index + 1) % len(self.active)
+        self.turns_taken += 1
 
     def isButton(self, player):
         if self.players.index(player) == self.button: return 1.0
