@@ -3,6 +3,13 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'api/**'
+      - 'agent/**'
+      - 'models/**'
+      - 'Dockerfile.api'
+      - 'requirements.txt'
+      - '.github/workflows/deploy-api.yml'
 
 jobs:
   build_and_push:
