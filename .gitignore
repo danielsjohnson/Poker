@@ -20,3 +20,4 @@ frontend/dist/
 mlflow_artifacts/
 postgres_data/
 mlruns/
+.env
