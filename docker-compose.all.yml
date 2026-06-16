@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # 1. The Database Container
+  db:
+    image: postgres:15
+    container_name: poker_db
+    environment:
+      - POSTGRES_USER=mlflow_user
+      - POSTGRES_PASSWORD=mlflow_password
+      - POSTGRES_DB=mlflow_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. The MLflow Tracking Server Container
+  mlflow:
+    build: .
+    container_name: poker_mlflow
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://mlflow_user:mlflow_password@db:5432/mlflow_db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+    depends_on:
+      - db
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+
+  # 3. The Bot Inference API Container
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: poker_api
+    environment:
+      - POKER_ENABLE_LOCAL_BOT=true
+      - POKER_CORS_ORIGINS=*
+    ports:
+      - "8001:8000"  # Map host port 8001 to container port 8000 to avoid conflicts
+    depends_on:
+      - mlflow
+
+  # 4. The Frontend and Game Logic Engine Container
+  game:
+    build:
+      context: .
+      dockerfile: Dockerfile.game
+    container_name: poker_game
+    environment:
+      - POKER_BOT_API_URL=http://api:8000/get_action  # Direct internal docker DNS to the bot API
+      - POKER_BOT_TIMEOUT_SECONDS=8
+      - POKER_CORS_ORIGINS=*
+    ports:
+      - "8000:8000"  # Map host port 8000 to container port 8000 for the frontend/game server
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  mlflow_artifacts:
