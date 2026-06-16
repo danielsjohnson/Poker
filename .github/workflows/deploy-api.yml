@@ -64,4 +64,4 @@ jobs:
           docker rm running_poker_api || true
           
           # 4. Start the new brain on port 8000
-          docker run -d -p 8000:8000 --name running_poker_api ghcr.io/danielsjohnson/poker-api:latest
+          docker run -d -p 8000:8000 -e POKER_ENABLE_LOCAL_BOT=true --name running_poker_api ghcr.io/danielsjohnson/poker-api:latest

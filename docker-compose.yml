@@ -35,6 +35,8 @@ services:
       context: .
       dockerfile: Dockerfile.api
     container_name: poker_api
+    environment:
+      - POKER_ENABLE_LOCAL_BOT=true
     ports:
       - "8000:8000"
     depends_on:
