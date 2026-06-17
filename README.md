@@ -86,7 +86,7 @@ To request an inference action from the bot directly, send a state vector and a 
 Example Inference Request:
 ```bash
 curl -X 'POST' \
-  'http://<YOUR_EC2_IP>:8000/get_action' \
+  'http://3.18.106.156:8000/get_action' \
   -H 'Content-Type: application/json' \
   -d '{
   "state_vector": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
