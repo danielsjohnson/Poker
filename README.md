@@ -6,6 +6,8 @@
 ![AWS](https://img.shields.io/badge/AWS-EC2-FF9900.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Serving-009688.svg)
 
+🎮 **Play the Live Game:** [poker-5vsg.onrender.com](https://poker-5vsg.onrender.com)
+
 This project implements an end-to-end MLOps pipeline for training, tracking, and serving a Deep Q-Network (DQN) agent capable of playing Heads-Up No-Limit Texas Hold’em. 
 
 Built with an **AI Platform Engineering** mindset, this repository emphasizes industry-standard systems architecture over isolated algorithmic experiments. The environment utilizes **Docker** for containerization, **MLflow** with a PostgreSQL backend for experiment tracking, **GitHub Actions** for CI/CD, and **FastAPI** for real-time model serving on **AWS EC2**. This architecture completely decouples the PyTorch training environment from the highly available production API.
@@ -74,18 +76,17 @@ poker_mlflow: MLflow server on port 5000.
 
 poker_api: FastAPI model serving endpoint on port 8000.
 
-Interacting with the RESTful API
-You can verify the currently deployed automated model via the health check:
+### Live Web Game
+The Texas Hold'em web application and game engine is fully deployed and playable at:
+👉 **[poker-5vsg.onrender.com](https://poker-5vsg.onrender.com)**
 
-```bash
-curl -X 'GET' 'http://<YOUR_EC2_IP>:8000/model-info'
-```
-To request an inference action from the bot, send a state vector and a valid actions mask as a JSON payload to the /get_action endpoint.
+### Interacting with the RESTful API
+To request an inference action from the bot directly, send a state vector and a valid actions mask as a JSON payload to the `/get_action` endpoint on the deployed AWS EC2 bot instance.
 
 Example Inference Request:
 ```bash
 curl -X 'POST' \
-  'http://<3.18.106.156>:8000/get_action' \
+  'http://<YOUR_EC2_IP>:8000/get_action' \
   -H 'Content-Type: application/json' \
   -d '{
   "state_vector": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -93,10 +94,12 @@ curl -X 'POST' \
 }'
 ```
 Expected JSON Response:
+```json
 {
   "bot_action": "Check",
   "action_index": 1
 }
+```
 
 Architecture:
 
