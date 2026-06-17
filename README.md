@@ -1,6 +1,6 @@
 # 🃏 MLOps Pipeline: Deep Q-Network Agent for Texas Hold'em
 
-![CI/CD Pipeline](https://github.com/danielsjohnson/Poker/actions/workflows/deploy_api.yml/badge.svg)
+![CI/CD Pipeline](https://github.com/danielsjohnson/Poker/actions/workflows/deploy-api.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.12-blue.svg)
 ![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED.svg)
 ![AWS](https://img.shields.io/badge/AWS-EC2-FF9900.svg)
