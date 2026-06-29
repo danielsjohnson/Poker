@@ -213,7 +213,8 @@ def main():
     agent = Agent(input_size=44, output_size=7)
     mlflow.set_tracking_uri("http://localhost:5000")
     mlflow.set_experiment("poker_agent_v1")
-    mlflow.start_run(run_name="training_run")
+    mlflow.start_run(run_name="v1.1_terminal_rewards")
+    mlflow.set_tag("architectural_change", "Switched from intermediate step rewards to terminal hand rewards")
 
     print("Setting up the table...")
     table = Table()
@@ -243,25 +244,28 @@ def main():
         "gamma": agent.gamma,
         "epsilon_decay": agent.epsilon_decay,
         "learning_rate": agent.learning_rate,
-        "opponent_distribution": opponent_distribution
-
+        "opponent_distribution": opponent_distribution,
+        "reward_type": "terminal_only"
     })
 
-    try:
+    # try:
+    # 
+    #     saved_weights = torch.load(RESUME_FILE_PATH)
+    # 
+    #     agent.policy_net.load_state_dict(saved_weights)
+    #     agent.target_net.load_state_dict(saved_weights)
+    # 
+    #     agent.epsilon = 0.05
+    # 
+    #     start_episode = 300000
+    #     print(f">>> SUCCESS: Resuming from Episode {start_episode}")
+    # 
+    # except FileNotFoundError:
+    #     print(">>> WARNING: Save file not found. Starting from scratch.")
+    #     start_episode = 0
 
-        saved_weights = torch.load(RESUME_FILE_PATH)
-
-        agent.policy_net.load_state_dict(saved_weights)
-        agent.target_net.load_state_dict(saved_weights)
-
-        agent.epsilon = 0.05
-
-        start_episode = 300000
-        print(f">>> SUCCESS: Resuming from Episode {start_episode}")
-
-    except FileNotFoundError:
-        print(">>> WARNING: Save file not found. Starting from scratch.")
-        start_episode = 0
+    start_episode = 0
+    print(">>> Info: Starting training from scratch to establish a clean baseline.")
 
     policies: Dict[str, OpponentPolicy] = {
         "station": CallingStationPolicy(),
@@ -299,7 +303,7 @@ def main():
 
             if curr_player_index == 0:
                 if hero_state is not None:
-                    reward = hero.chips - hero_stack_at_action
+                    reward = 0
                     agent.memory.append((hero_state, hero_action, reward, state, False))
                     agent.optimize_model()
 
@@ -310,7 +314,7 @@ def main():
                 next_state, _, done = game.step(hero_action)
 
                 if done:
-                    reward = hero.chips - hero_stack_at_action
+                    reward = hero.chips - starting_stack
                     agent.memory.append((hero_state, hero_action, reward, None, True))
                     agent.optimize_model()
 
@@ -337,7 +341,7 @@ def main():
                 next_state, _, done = game.step(action)
 
                 if done and hero_state is not None:
-                    reward = hero.chips - hero_stack_at_action
+                    reward = hero.chips - starting_stack
                     agent.memory.append((hero_state, hero_action, reward, None, True))
                     agent.optimize_model()
 
