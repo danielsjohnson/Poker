@@ -15,14 +15,29 @@ LEARNING_RATE = 0.0001
 class DQN(nn.Module):
     def __init__(self, input_size, output_size):
         super().__init__()
-        self.input_layer = nn.Linear(input_size, 128)
-        self.hidden_layer = nn.Linear(128, 128)
-        self.output_layer = nn.Linear(128, output_size)
+        # Shared Feature Network
+        self.feature_layer1 = nn.Linear(input_size, 512)
+        self.feature_layer2 = nn.Linear(512, 512)
+        
+        # Value Stream
+        self.value_layer1 = nn.Linear(512, 256)
+        self.value_layer2 = nn.Linear(256, 1)
+        
+        # Advantage Stream
+        self.adv_layer1 = nn.Linear(512, 256)
+        self.adv_layer2 = nn.Linear(256, output_size)
 
     def forward(self, x):
-        x = F.leaky_relu(self.input_layer(x))
-        x = F.leaky_relu(self.hidden_layer(x))
-        return self.output_layer(x)
+        features = F.leaky_relu(self.feature_layer1(x))
+        features = F.leaky_relu(self.feature_layer2(features))
+        
+        value = F.leaky_relu(self.value_layer1(features))
+        value = self.value_layer2(value)
+        
+        adv = F.leaky_relu(self.adv_layer1(features))
+        adv = self.adv_layer2(adv)
+        
+        return value + (adv - adv.mean(dim=1, keepdim=True))
 
 class Agent:
     def __init__(self, input_size, output_size):
