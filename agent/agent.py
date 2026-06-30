@@ -113,7 +113,8 @@ class Agent:
         
         next_state_values = torch.zeros(self.batch_size, device=self.device)
         if len(non_final_next_states) > 0:
-            next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
+            best_next_actions = self.policy_net(non_final_next_states).argmax(1).unsqueeze(1)
+            next_state_values[non_final_mask] = self.target_net(non_final_next_states).gather(1, best_next_actions).squeeze(1).detach()
 
         expected_state_action_values = reward_batch + (next_state_values * self.gamma)
 
