@@ -313,7 +313,7 @@ def main():
             if curr_player_index == 0:
                 if hero_state is not None:
                     reward = 0
-                    agent.memory.append((hero_state, hero_action, reward, state, False))
+                    agent.store_transition(hero_state, hero_action, reward, state, False)
                     agent.optimize_model()
 
                 hero_state = state
@@ -324,7 +324,7 @@ def main():
 
                 if done:
                     reward = hero.chips - starting_stack
-                    agent.memory.append((hero_state, hero_action, reward, None, True))
+                    agent.store_transition(hero_state, hero_action, reward, None, True)
                     agent.optimize_model()
 
                 state = next_state
@@ -351,7 +351,7 @@ def main():
 
                 if done and hero_state is not None:
                     reward = hero.chips - starting_stack
-                    agent.memory.append((hero_state, hero_action, reward, None, True))
+                    agent.store_transition(hero_state, hero_action, reward, None, True)
                     agent.optimize_model()
 
                 state = next_state

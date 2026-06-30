@@ -4,7 +4,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 import random
-from collections import deque
 
 EPSILON_DECAY = 0.9999
 EPSILON_MIN = 0.05
@@ -49,7 +48,17 @@ class Agent:
         self.target_net.eval()
 
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LEARNING_RATE)
-        self.memory = deque(maxlen=100000)
+        
+        # GPU Tensor Replay Buffer
+        self.mem_size = 100000
+        self.ptr = 0
+        self.size = 0
+        
+        self.state_mem = torch.zeros((self.mem_size, input_size), dtype=torch.float32, device=self.device)
+        self.next_state_mem = torch.zeros((self.mem_size, input_size), dtype=torch.float32, device=self.device)
+        self.action_mem = torch.zeros((self.mem_size, 1), dtype=torch.long, device=self.device)
+        self.reward_mem = torch.zeros((self.mem_size,), dtype=torch.float32, device=self.device)
+        self.done_mem = torch.zeros((self.mem_size,), dtype=torch.bool, device=self.device)
 
         self.epsilon = 1.0
         self.epsilon_min = EPSILON_MIN
@@ -73,25 +82,36 @@ class Agent:
             
             return q_values.argmax().item()
         
+    def store_transition(self, state, action, reward, next_state, done):
+        self.state_mem[self.ptr] = torch.tensor(state, dtype=torch.float32, device=self.device)
+        self.action_mem[self.ptr] = action
+        self.reward_mem[self.ptr] = reward
+        self.done_mem[self.ptr] = done
+        
+        if next_state is not None:
+            self.next_state_mem[self.ptr] = torch.tensor(next_state, dtype=torch.float32, device=self.device)
+        else:
+            self.next_state_mem[self.ptr] = 0.0
+            
+        self.ptr = (self.ptr + 1) % self.mem_size
+        self.size = min(self.size + 1, self.mem_size)
+
     def optimize_model(self):
-        if len(self.memory) < BATCH_SIZE:
+        if self.size < self.batch_size:
             return
         
-        experiences = random.sample(self.memory, BATCH_SIZE)
-        batch_state, batch_action, batch_reward, batch_next_state, batch_done = zip(*experiences)
+        idxs = torch.randint(0, self.size, (self.batch_size,), device=self.device)
         
-        state_batch = torch.tensor(batch_state, dtype=torch.float32, device=self.device)
-        action_batch = torch.tensor(batch_action, dtype=torch.long, device=self.device).unsqueeze(1)
-        reward_batch = torch.tensor(batch_reward, dtype=torch.float32, device=self.device)
-
-        non_final_mask = torch.tensor([s is not None for s in batch_next_state], device=self.device, dtype=torch.bool)
-        non_final_next_states_list = [s for s in batch_next_state if s is not None]
-
-        if len(non_final_next_states_list) > 0:
-            non_final_next_states = torch.tensor(non_final_next_states_list, dtype=torch.float32, device=self.device)
-        else:
-            non_final_next_states = torch.empty(0, device=self.device)
-        next_state_values = torch.zeros(BATCH_SIZE, device=self.device)
+        state_batch = self.state_mem[idxs]
+        action_batch = self.action_mem[idxs]
+        reward_batch = self.reward_mem[idxs]
+        next_state_batch = self.next_state_mem[idxs]
+        done_batch = self.done_mem[idxs]
+        
+        non_final_mask = ~done_batch
+        non_final_next_states = next_state_batch[non_final_mask]
+        
+        next_state_values = torch.zeros(self.batch_size, device=self.device)
         if len(non_final_next_states) > 0:
             next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
 
