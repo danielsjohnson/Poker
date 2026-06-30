@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import numpy as np
 import random
 
-EPSILON_DECAY = 0.9999
+EPSILON_DECAY = 0.999997
 EPSILON_MIN = 0.05
 GAMMA = 0.99
 BATCH_SIZE = 1024
