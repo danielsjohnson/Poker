@@ -381,6 +381,9 @@ def main():
                 mlflow.log_metric("hero_af", hero_stats.aggression_factor(), step=episode)
                 mlflow.log_metric("hero_bb_100", hero_stats.bb_per_100(), step=episode)
 
+            # Reset tracker to get moving average instead of lifetime cumulative
+            tracker = MetricsTracker(big_blind=20)
+            game.tracker = tracker
             total_profit = 0
 
             if episode % 1000 == 0 and episode > 0:
