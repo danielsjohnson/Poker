@@ -40,6 +40,10 @@ class Game():
             "StraightFlush",
             "RoyalFlush"   
         ]
+        self.rank_map = {r: i / 12.0 for i, r in enumerate(self.ranks)}
+        self.suit_map = {s: i for i, s in enumerate(self.suits)}
+        self.rank_idx_map = {r: i for i, r in enumerate(self.ranks)}
+        self.hand_rank_map = {hr: i for i, hr in enumerate(self.hand_rankings)}
 
     def get_valid_actions(self):
         player = self.active[self.current_player_index]
@@ -152,13 +156,19 @@ class Game():
         self.active = self.players[:]
     
     def resetGame(self):
-        self.current_player_index = 0
         self.hand_over = False
         self.current_player = None
         self.last_raiser = None
         self.turns_taken = 0
         self.last_raise_amount = 0
         self.incrementButton()
+
+        if len(self.players) == 2:
+            first_actor = self.button # SB acts first preflop in Heads Up
+        else:
+            first_actor = (self.button + 3) % len(self.players) # UTG acts first otherwise
+            
+        self.current_player_index = self.active.index(self.players[first_actor])
 
     def preflop(self):
         self.street = 0
@@ -220,9 +230,9 @@ class Game():
 
 
         for card in hero.hand:
-            state.append(self.ranks.index(card.rank) / 12.0)
+            state.append(self.rank_map[card.rank])
             suit_encoding = [0, 0, 0, 0]
-            suit_encoding[self.suits.index(card.suit)] = 1
+            suit_encoding[self.suit_map[card.suit]] = 1
             state.extend(suit_encoding)
 
 
@@ -230,9 +240,9 @@ class Game():
         for i in range(5):
             if i < len(self.table.community):
                 card = self.table.community[i]
-                state.append(self.ranks.index(card.rank) / 12.0)
+                state.append(self.rank_map[card.rank])
                 suit_encoding = [0, 0, 0, 0]
-                suit_encoding[self.suits.index(card.suit)] = 1
+                suit_encoding[self.suit_map[card.suit]] = 1
                 state.extend(suit_encoding)
             else:
                 state.extend([-1.0, 0, 0, 0, 0])
@@ -256,12 +266,12 @@ class Game():
         for player in self.active:
             hand = judge.find_hand(player.hand, self.table.community)
             player.final_hand = []
-            player.final_hand.append(self.hand_rankings.index(hand[0]))
+            player.final_hand.append(self.hand_rank_map[hand[0]])
             for i in range(1, len(hand)):
                 try:
-                    val = self.ranks.index(hand[i].rank)
+                    val = self.rank_idx_map[hand[i].rank]
                 except:
-                    val = self.ranks.index(hand[i])
+                    val = self.rank_idx_map[hand[i]]
                 player.final_hand.append(val)
             player.final_hand = tuple(player.final_hand)
 
@@ -324,9 +334,13 @@ class Game():
         return self.players[(self.button + 3) % len(self.players)]
     
     def bigBlind(self): 
+        if len(self.players) == 2:
+            return self.players[(self.button + 1) % len(self.players)]
         return self.players[(self.button + 2) % len(self.players)]
     
     def smallBlind(self): 
+        if len(self.players) == 2:
+            return self.players[self.button]
         return self.players[(self.button + 1) % len(self.players)]
     
     def UTG_index(self): 
@@ -361,6 +375,18 @@ class Game():
         self.last_raise_amount = 0
         self.last_raiser = None
         self.turns_taken = 0
+
+        if len(self.active) > 0:
+            if len(self.players) == 2:
+                first_actor = (self.button + 1) % len(self.players) # BB acts first postflop
+            else:
+                first_actor = (self.button + 1) % len(self.players) # SB acts first postflop
+                
+            idx = first_actor
+            while self.players[idx] not in self.active:
+                idx = (idx + 1) % len(self.players)
+                
+            self.current_player_index = self.active.index(self.players[idx])
 
     def incrementTurn(self):
         if len(self.active) == 0: return

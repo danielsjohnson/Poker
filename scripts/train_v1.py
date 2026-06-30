@@ -1,4 +1,5 @@
 import random
+import argparse
 from dataclasses import dataclass
 from typing import List, Protocol, Dict
 
@@ -202,6 +203,16 @@ def evaluate_against_villain(agent: Agent, villain_policy) -> dict:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Train poker agent")
+    parser.add_argument("--run-id", type=str, default=None, help="The unique MLflow run ID to resume")
+    parser.add_argument("--run-name", type=str, default=None, help="The name of the new MLflow run (required if not resuming)")
+    parser.add_argument("--checkpoint", type=str, default=None, help="The file path to the .pth weights file")
+    parser.add_argument("--start-episode", type=int, default=0, help="The episode number to begin the training loop from")
+    args = parser.parse_args()
+
+    if not args.run_id and not args.run_name:
+        parser.error("A --run-name is required when starting a fresh training run.")
+
     opponent_distribution = """
     Opponent Distribution :
       station (Loose-Passive):  40%
@@ -213,7 +224,11 @@ def main():
     agent = Agent(input_size=44, output_size=7)
     mlflow.set_tracking_uri("http://localhost:5000")
     mlflow.set_experiment("poker_agent_v1")
-    mlflow.start_run(run_name="training_run")
+    if args.run_id:
+        mlflow.start_run(run_id=args.run_id)
+    else:
+        mlflow.start_run(run_name=args.run_name)
+    mlflow.set_tag("architectural_change", "Switched from intermediate step rewards to terminal hand rewards")
 
     print("Setting up the table...")
     table = Table()
@@ -243,25 +258,23 @@ def main():
         "gamma": agent.gamma,
         "epsilon_decay": agent.epsilon_decay,
         "learning_rate": agent.learning_rate,
-        "opponent_distribution": opponent_distribution
-
+        "opponent_distribution": opponent_distribution,
+        "reward_type": "terminal_only"
     })
 
-    try:
-
-        saved_weights = torch.load(RESUME_FILE_PATH)
-
-        agent.policy_net.load_state_dict(saved_weights)
-        agent.target_net.load_state_dict(saved_weights)
-
-        agent.epsilon = 0.05
-
-        start_episode = 300000
-        print(f">>> SUCCESS: Resuming from Episode {start_episode}")
-
-    except FileNotFoundError:
-        print(">>> WARNING: Save file not found. Starting from scratch.")
-        start_episode = 0
+    if args.checkpoint:
+        try:
+            saved_weights = torch.load(args.checkpoint)
+            agent.policy_net.load_state_dict(saved_weights)
+            agent.target_net.load_state_dict(saved_weights)
+            agent.epsilon = max(agent.epsilon_min, 1.0 * (agent.epsilon_decay ** args.start_episode))
+            print(f">>> SUCCESS: Loaded checkpoint from '{args.checkpoint}'")
+            print(f">>> Start Episode: {args.start_episode} | Recalculated Epsilon: {agent.epsilon:.6f}")
+        except FileNotFoundError:
+            print(f">>> ERROR: Checkpoint file '{args.checkpoint}' not found. Starting from scratch.")
+            args.start_episode = 0
+    else:
+        print(">>> Info: Starting training from scratch to establish a clean baseline.")
 
     policies: Dict[str, OpponentPolicy] = {
         "station": CallingStationPolicy(),
@@ -276,7 +289,7 @@ def main():
 
     total_profit = 0
 
-    for episode in range(start_episode, EPISODES):
+    for episode in range(args.start_episode, EPISODES):
         if game.players[0].chips <= 0 or game.players[1].chips <= 0:
             for p in game.players:
                 p.chips = STACK_SIZE
@@ -299,8 +312,8 @@ def main():
 
             if curr_player_index == 0:
                 if hero_state is not None:
-                    reward = hero.chips - hero_stack_at_action
-                    agent.memory.append((hero_state, hero_action, reward, state, False))
+                    reward = 0
+                    agent.store_transition(hero_state, hero_action, reward, state, False)
                     agent.optimize_model()
 
                 hero_state = state
@@ -310,8 +323,8 @@ def main():
                 next_state, _, done = game.step(hero_action)
 
                 if done:
-                    reward = hero.chips - hero_stack_at_action
-                    agent.memory.append((hero_state, hero_action, reward, None, True))
+                    reward = hero.chips - starting_stack
+                    agent.store_transition(hero_state, hero_action, reward, None, True)
                     agent.optimize_model()
 
                 state = next_state
@@ -337,8 +350,8 @@ def main():
                 next_state, _, done = game.step(action)
 
                 if done and hero_state is not None:
-                    reward = hero.chips - hero_stack_at_action
-                    agent.memory.append((hero_state, hero_action, reward, None, True))
+                    reward = hero.chips - starting_stack
+                    agent.store_transition(hero_state, hero_action, reward, None, True)
                     agent.optimize_model()
 
                 state = next_state
@@ -368,6 +381,9 @@ def main():
                 mlflow.log_metric("hero_af", hero_stats.aggression_factor(), step=episode)
                 mlflow.log_metric("hero_bb_100", hero_stats.bb_per_100(), step=episode)
 
+            # Reset tracker to get moving average instead of lifetime cumulative
+            tracker = MetricsTracker(big_blind=20)
+            game.tracker = tracker
             total_profit = 0
 
             if episode % 1000 == 0 and episode > 0:
