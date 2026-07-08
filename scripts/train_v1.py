@@ -285,17 +285,46 @@ def main():
         "self": SelfPlayPolicy(agent),
     }
 
+    MATCH_LENGTH = 100
+
     print("Starting Training...")
 
     total_profit = 0
+
+    # Initialize the first opponent
+    villain_type = sample_villain_type()
+    villain_policy = policies[villain_type]
 
     for episode in range(args.start_episode, EPISODES):
         if game.players[0].chips <= 0 or game.players[1].chips <= 0:
             for p in game.players:
                 p.chips = STACK_SIZE
 
-        villain_type = sample_villain_type()
-        villain_policy = policies[villain_type]
+        # Switch opponent every MATCH_LENGTH episodes (except at the very start of training/resume)
+        if episode % MATCH_LENGTH == 0 and episode > args.start_episode:
+            # 1. Log training stats before wiping
+            avg_profit = total_profit / MATCH_LENGTH
+            mlflow.log_metric("avg_profit", avg_profit, step=episode)
+            mlflow.log_metric(key='epsilon', value=agent.epsilon, step=episode)
+
+            print(
+                f"Ep {episode}: Avg Profit: {avg_profit:.2f} | Epsilon: {agent.epsilon:.4f} | Previous Opponent: {villain_type}")
+
+            hero_stats = tracker.stats.get("Hero")
+            if hero_stats:
+                mlflow.log_metric("hero_vpip", hero_stats.vpip_pct(), step=episode)
+                mlflow.log_metric("hero_pfr", hero_stats.pfr_pct(), step=episode)
+                mlflow.log_metric("hero_af", hero_stats.aggression_factor(), step=episode)
+                mlflow.log_metric("hero_bb_100", hero_stats.bb_per_100(), step=episode)
+
+            # 2. Rotate Opponent
+            villain_type = sample_villain_type()
+            villain_policy = policies[villain_type]
+
+            # 3. Reset Tracker & Profit
+            tracker = MetricsTracker(big_blind=20)
+            game.tracker = tracker
+            total_profit = 0
 
         state = game.reset()
         hero = game.players[0]
@@ -365,53 +394,32 @@ def main():
         if agent.epsilon > agent.epsilon_min:
             agent.epsilon *= agent.epsilon_decay
 
-        if episode % 1000 == 0 and episode > 0:
-            avg_profit = total_profit / 1000
+        if episode % 1000 == 0 and episode > args.start_episode:
+            print(f"\n--- Running Evaluation Gauntlet (Episode {episode}) ---")
 
-            print(
-                f"Ep {episode}: Avg Profit: {avg_profit:.2f} | Epsilon: {agent.epsilon:.4f} | Last Opponent: {villain_type}")
+            gauntlet = {
+                "station": CallingStationPolicy(),
+                "police": PoliceV1Policy(police),
+                "pressure": PressureV1Policy(pressure),
+                "punisher": PunisherV1Policy(punisher)
+            }
 
-            mlflow.log_metric("avg_profit", avg_profit, step=episode)
-            mlflow.log_metric(key='epsilon', value=agent.epsilon, step=episode)
+            for villain_name, policy in gauntlet.items():
+                print(f"  Evaluating vs {villain_name.upper()}...")
+                results = evaluate_against_villain(agent, policy)
 
-            hero_stats = tracker.stats.get("Hero")
-            if hero_stats:
-                mlflow.log_metric("hero_vpip", hero_stats.vpip_pct(), step=episode)
-                mlflow.log_metric("hero_pfr", hero_stats.pfr_pct(), step=episode)
-                mlflow.log_metric("hero_af", hero_stats.aggression_factor(), step=episode)
-                mlflow.log_metric("hero_bb_100", hero_stats.bb_per_100(), step=episode)
+                if results:
+                    # Log metrics prefixed by the villain's name
+                    mlflow.log_metric(f"eval_vs_{villain_name}_bb100", results["bb_100"], step=episode)
+                    mlflow.log_metric(f"eval_vs_{villain_name}_vpip", results["vpip"], step=episode)
+                    mlflow.log_metric(f"eval_vs_{villain_name}_pfr", results["pfr"], step=episode)
+                    mlflow.log_metric(f"eval_vs_{villain_name}_af", results["af"], step=episode)
 
-            # Reset tracker to get moving average instead of lifetime cumulative
-            tracker = MetricsTracker(big_blind=20)
-            game.tracker = tracker
-            total_profit = 0
+                    print(f"    -> Winrate: {results['bb_100']:.2f} BB/100 | VPIP: {results['vpip']:.1f}%")
 
-            if episode % 1000 == 0 and episode > 0:
-                print(f"\n--- Running Evaluation Gauntlet (Episode {episode}) ---")
+            print("--- Evaluation Complete ---\n")
 
-                gauntlet = {
-                    "station": CallingStationPolicy(),
-                    "police": PoliceV1Policy(police),
-                    "pressure": PressureV1Policy(pressure),
-                    "punisher": PunisherV1Policy(punisher)
-                }
-
-                for villain_name, policy in gauntlet.items():
-                    print(f"  Evaluating vs {villain_name.upper()}...")
-                    results = evaluate_against_villain(agent, policy)
-
-                    if results:
-                        # Log metrics prefixed by the villain's name
-                        mlflow.log_metric(f"eval_vs_{villain_name}_bb100", results["bb_100"], step=episode)
-                        mlflow.log_metric(f"eval_vs_{villain_name}_vpip", results["vpip"], step=episode)
-                        mlflow.log_metric(f"eval_vs_{villain_name}_pfr", results["pfr"], step=episode)
-                        mlflow.log_metric(f"eval_vs_{villain_name}_af", results["af"], step=episode)
-
-                        print(f"    -> Winrate: {results['bb_100']:.2f} BB/100 | VPIP: {results['vpip']:.1f}%")
-
-                print("--- Evaluation Complete ---\n")
-
-                torch.save(agent.policy_net.state_dict(), f"checkpoint_{episode}.pth")
+            torch.save(agent.policy_net.state_dict(), f"checkpoint_{episode}.pth")
 
     print("Training Complete.")
     mlflow.end_run()
