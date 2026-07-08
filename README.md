@@ -114,7 +114,7 @@ Expected JSON Response:
 
 | Component      | Value                                                        |
 |----------------|--------------------------------------------------------------|
-| Input Size     | 44                                                           |
+| Input Size     | 47                                                           |
 | Architecture   | Double Dueling DQN (D3QN)                                    |
 | Hidden Layers  | 2 Shared Feature Layers, 2 Value, 2 Advantage                |
 | Hidden Units   | 512 (Shared) / 256 (Streams)                                 |

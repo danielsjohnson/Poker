@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
         from agent.agent import DQN
 
         print("Loading local ML model...")
-        bot = DQN(input_size=44, output_size=7)
+        bot = DQN(input_size=47, output_size=7)
         model_path = get_highest_version_model()
         print(f"Deploying highest version found: {model_path}")
         bot.load_state_dict(torch.load(model_path, map_location=torch.device('cpu'), weights_only=True))
@@ -161,8 +161,8 @@ def get_bot_action(state: GameState):
         raise HTTPException(status_code=404, detail="Local inference is disabled for this deployment")
     import torch
 
-    if len(state.state_vector) != 44:
-        raise HTTPException(status_code=400, detail="state_vector must contain 44 values")
+    if len(state.state_vector) != 47:
+        raise HTTPException(status_code=400, detail="state_vector must contain 47 values")
     if len(state.valid_actions) != len(ACTION_NAMES):
         raise HTTPException(status_code=400, detail="valid_actions must contain 7 values")
 

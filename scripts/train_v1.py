@@ -221,7 +221,7 @@ def main():
       punisher (Tight-Aggro):   20%
       self:                     0%  
     """
-    agent = Agent(input_size=44, output_size=7)
+    agent = Agent(input_size=47, output_size=7)
     mlflow.set_tracking_uri("http://localhost:5000")
     mlflow.set_experiment("poker_agent_v1")
     if args.run_id:
@@ -243,7 +243,7 @@ def main():
     input_size = len(initial_state)
     print(f"State Size: {input_size}")
 
-    agent = Agent(input_size=44, output_size=7)
+    agent = Agent(input_size=47, output_size=7)
 
     punisher = PunisherBot()
     trap = TrapBot()
