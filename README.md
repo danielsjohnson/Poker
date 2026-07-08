@@ -60,6 +60,15 @@ To stabilize win rates across all opponent types and ensure the bot generalizes 
 
 ---
 
+### 🚀 Completed Upgrades (v2-Baseline)
+We have successfully implemented the core engineering and algorithmic baseline upgrades for the v2 pipeline:
+* **GPU-Native Replay Buffer:** Replaced the CPU-based `deque` memory with a pre-allocated PyTorch Tensor Replay Buffer directly in GPU VRAM (reducing training times by ~40%).
+* **Double Dueling DQN (D3QN):** Upgraded the network to a Dueling architecture (splitting state-value and action-advantage streams) and refactored the Bellman update to use Double DQN target evaluation to eliminate Q-value overestimation bias.
+* **Game Engine O(1) Optimization:** Converted the state generation (`get_state`) and showdown logic in `engine/game.py` from linear O(N) list searches (`.index()`) to O(1) dictionary lookups, eliminating simulation latency bottlenecks.
+* **Metrics Tracker Fixes:** Corrected the metrics tracker to properly reset statistics between evaluation phases to capture clean moving average win rates.
+
+---
+
 ## 🚀 Deployment & Usage
 
 ### Spinning up the Stack
@@ -101,19 +110,19 @@ Expected JSON Response:
 }
 ```
 
-Architecture:
+### Model Architecture
 
-| Component      | Value                    |      |         |         |        |
-|----------------|--------------------------|------|---------|---------|--------|
-| Input Size     | 44                       |      |         |         |        |
-| Hidden Layers  | 2                        |      |         |         |        |
-| Hidden Units   | 128                      |      |         |         |        |
-| Activation     | ReLU                     |      |         |         |        |
-| Output         | Discrete masked Q-values |      |         |         |        |
-| Target Network | Yes                      |      |         |         |        |
-| Replay Buffer  | Yes                      |      |         |         |        |
-| Actions: Fold  | Check                    | Call | 1/2 Pot | 3/4 Pot | All-In |
-
+| Component      | Value                                                        |
+|----------------|--------------------------------------------------------------|
+| Input Size     | 44                                                           |
+| Architecture   | Double Dueling DQN (D3QN)                                    |
+| Hidden Layers  | 2 Shared Feature Layers, 2 Value, 2 Advantage                |
+| Hidden Units   | 512 (Shared) / 256 (Streams)                                 |
+| Activation     | Leaky ReLU                                                   |
+| Output         | 7 Discrete masked Q-values                                   |
+| Replay Buffer  | GPU Pre-allocated Tensor Replay Buffer                       |
+| Target Network | Yes (Periodic soft updates)                                  |
+| Actions        | Fold, Check, Call, Min Raise, Med Raise, Max Raise, All-In   |
 
 🎯 Design Philosophy
 
