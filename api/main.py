@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from engine.game import Game
 from engine.player import Player
 from engine.table import Table
+from engine.metrics import MetricsTracker
 import os
 import glob
 import re
@@ -205,7 +206,8 @@ def create_session(stack_size: int) -> PokerSession:
         raise HTTPException(status_code=400, detail="stack_size must be at least 100")
 
     table = Table()
-    game = Game(table)
+    tracker = MetricsTracker(big_blind=20)
+    game = Game(table, tracker=tracker)
     human = Player("You", table)
     bot = Player("PokerBot", table)
     human.chips = stack_size
