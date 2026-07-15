@@ -94,7 +94,8 @@ app.add_middleware(
 
 
 class GameState(BaseModel):
-    state_vector: list[float]
+    state_vector: list[float] | None = None
+    state_history: list[list[float]] | None = None
     valid_actions: list[int]
 
 
@@ -124,6 +125,7 @@ class PokerSession:
     history: list[dict[str, Any]] = field(default_factory=list)
     last_bot_response: dict[str, Any] | None = None
     bot_error: str | None = None
+    bot_state_history: list[list[float]] = field(default_factory=list)
 
 
 @app.get("/")
@@ -161,16 +163,30 @@ def get_bot_action(state: GameState):
         raise HTTPException(status_code=404, detail="Local inference is disabled for this deployment")
     import torch
 
-    if len(state.state_vector) != 47:
-        raise HTTPException(status_code=400, detail="state_vector must contain 47 values")
-    if len(state.valid_actions) != len(ACTION_NAMES):
-        raise HTTPException(status_code=400, detail="valid_actions must contain 7 values")
-
     active_brain = ml_models.get("poker_bot")
     if active_brain is None:
         raise HTTPException(status_code=503, detail="Poker bot model is not loaded")
 
-    state_tensor = torch.tensor(state.state_vector, dtype=torch.float32).unsqueeze(0)
+    is_lstm = hasattr(active_brain, 'lstm')
+
+    if state.state_history is not None:
+        if len(state.state_history) != 12 or any(len(s) != 47 for s in state.state_history):
+            raise HTTPException(status_code=400, detail="state_history must be of shape 12x47")
+        state_tensor = torch.tensor(state.state_history, dtype=torch.float32).unsqueeze(0)
+    else:
+        if state.state_vector is None or len(state.state_vector) != 47:
+            raise HTTPException(status_code=400, detail="state_vector must contain 47 values")
+        
+        if is_lstm:
+            # Fallback padding for LSTM model if called by old 1D client
+            seq = [[0.0]*47 for _ in range(11)] + [state.state_vector]
+            state_tensor = torch.tensor(seq, dtype=torch.float32).unsqueeze(0)
+        else:
+            state_tensor = torch.tensor(state.state_vector, dtype=torch.float32).unsqueeze(0)
+
+    if len(state.valid_actions) != len(ACTION_NAMES):
+        raise HTTPException(status_code=400, detail="valid_actions must contain 7 values")
+
     with torch.no_grad():
         q_values = active_brain(state_tensor)
     mask = torch.tensor(state.valid_actions, dtype=torch.bool)
@@ -227,6 +243,7 @@ def deal_new_hand(session: PokerSession) -> None:
         "bot": session.bot.chips,
     }
     session.history = []
+    session.bot_state_history = []
     session.last_bot_response = None
     session.bot_error = None
     session.game.reset()
@@ -399,17 +416,22 @@ def bot_action_url() -> str:
     return f"{raw_url.rstrip('/')}/get_action"
 
 
-def remote_bot_action(state_vector: list[float], valid_actions: list[int]) -> dict[str, Any]:
+def remote_bot_action(state_vector: list[float], valid_actions: list[int], state_history: list[list[float]] | None = None) -> dict[str, Any]:
     url = bot_action_url()
     if not url:
         if ENABLE_LOCAL_BOT:
-            return get_bot_action(GameState(state_vector=state_vector, valid_actions=valid_actions))
+            return get_bot_action(GameState(state_vector=state_vector, state_history=state_history, valid_actions=valid_actions))
         raise BotInferenceError("POKER_BOT_API_URL is required when local bot inference is disabled")
 
-    payload = json.dumps({
-        "state_vector": state_vector,
+    payload_dict = {
         "valid_actions": valid_actions,
-    }).encode("utf-8")
+    }
+    if state_history is not None:
+        payload_dict["state_history"] = state_history
+    else:
+        payload_dict["state_vector"] = state_vector
+
+    payload = json.dumps(payload_dict).encode("utf-8")
     post_request = request.Request(
         url,
         data=payload,
@@ -524,8 +546,17 @@ def resolve_bot_turns(session: PokerSession, max_turns: int = 20) -> None:
         role = current_role(session)
         if role == "bot":
             state_vector = session.game.get_state()
+            session.bot_state_history.append(state_vector)
+            
+            # Build sequence of length 12
+            history_window = session.bot_state_history[-12:]
+            if len(history_window) < 12:
+                padded_history = [[0.0]*47 for _ in range(12 - len(history_window))] + history_window
+            else:
+                padded_history = history_window
+
             valid_actions = session.game.get_valid_actions()
-            response = remote_bot_action(state_vector, valid_actions)
+            response = remote_bot_action(state_vector, valid_actions, state_history=padded_history)
             action_index = validate_bot_action(response, valid_actions)
             session.last_bot_response = {
                 "botAction": response.get("bot_action", ACTION_NAMES[action_index]),

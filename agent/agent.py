@@ -5,30 +5,32 @@ import torch.nn.functional as F
 import numpy as np
 import random
 
-EPSILON_DECAY = 0.999997
+EPSILON_DECAY = 0.999998
 EPSILON_MIN = 0.05
 GAMMA = 0.99
-BATCH_SIZE = 1024
+BATCH_SIZE = 2048
 LEARNING_RATE = 0.0001
 
 class DQN(nn.Module):
     def __init__(self, input_size, output_size):
         super().__init__()
-        # Shared Feature Network
-        self.feature_layer1 = nn.Linear(input_size, 512)
-        self.feature_layer2 = nn.Linear(512, 512)
+        # LSTM layer processes the sequence (batch, seq_len, features)
+        self.lstm = nn.LSTM(input_size, 256, batch_first=True)
         
         # Value Stream
-        self.value_layer1 = nn.Linear(512, 256)
-        self.value_layer2 = nn.Linear(256, 1)
+        self.value_layer1 = nn.Linear(256, 128)
+        self.value_layer2 = nn.Linear(128, 1)
         
         # Advantage Stream
-        self.adv_layer1 = nn.Linear(512, 256)
-        self.adv_layer2 = nn.Linear(256, output_size)
+        self.adv_layer1 = nn.Linear(256, 128)
+        self.adv_layer2 = nn.Linear(128, output_size)
 
     def forward(self, x):
-        features = F.leaky_relu(self.feature_layer1(x))
-        features = F.leaky_relu(self.feature_layer2(features))
+        # Run through LSTM
+        lstm_out, _ = self.lstm(x)
+        
+        # We only care about the features at the final time step of the sequence
+        features = lstm_out[:, -1, :]
         
         value = F.leaky_relu(self.value_layer1(features))
         value = self.value_layer2(value)
@@ -49,13 +51,14 @@ class Agent:
 
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LEARNING_RATE)
         
-        # GPU Tensor Replay Buffer
-        self.mem_size = 100000
+        # GPU Tensor Sequence Replay Buffer
+        self.mem_size = 500000
+        self.seq_len = 12
         self.ptr = 0
         self.size = 0
         
-        self.state_mem = torch.zeros((self.mem_size, input_size), dtype=torch.float32, device=self.device)
-        self.next_state_mem = torch.zeros((self.mem_size, input_size), dtype=torch.float32, device=self.device)
+        self.state_mem = torch.zeros((self.mem_size, self.seq_len, input_size), dtype=torch.float32, device=self.device)
+        self.next_state_mem = torch.zeros((self.mem_size, self.seq_len, input_size), dtype=torch.float32, device=self.device)
         self.action_mem = torch.zeros((self.mem_size, 1), dtype=torch.long, device=self.device)
         self.reward_mem = torch.zeros((self.mem_size,), dtype=torch.float32, device=self.device)
         self.done_mem = torch.zeros((self.mem_size,), dtype=torch.bool, device=self.device)

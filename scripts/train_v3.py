@@ -1,4 +1,5 @@
 import random
+import numpy as np
 import argparse
 from dataclasses import dataclass
 from typing import List, Protocol, Dict
@@ -17,6 +18,15 @@ from agent.police_bot_v1 import PoliceBot
 from agent.pressure_bot_v1 import PressureBot
 from agent.punisher_bot_v1 import PunisherBot
 from agent.trap_bot_v1 import TrapBot
+
+def get_padded_sequence(history, seq_len=12, feature_size=47):
+    seq = np.zeros((seq_len, feature_size), dtype=np.float32)
+    if not history:
+        return seq
+    recent = history[-seq_len:]
+    for i, s in enumerate(recent):
+        seq[seq_len - len(recent) + i] = s
+    return seq
 
 EPISODES = 1500000
 STACK_SIZE = 1000
@@ -160,6 +170,7 @@ def evaluate_against_villain(agent: Agent, villain_policy) -> dict:
                 p.chips = STACK_SIZE
 
         state = eval_game.reset()
+        hero_history = []
         done = False
 
         while not done:
@@ -167,9 +178,11 @@ def evaluate_against_villain(agent: Agent, villain_policy) -> dict:
             valid_actions = eval_game.get_valid_actions()
 
             if curr_idx == 0:
+                hero_history.append(state)
+                padded_seq = get_padded_sequence(hero_history)
                 # Hero selects best known action
                 with torch.no_grad():
-                    action = agent.select_action(state, valid_actions)
+                    action = agent.select_action(padded_seq, valid_actions)
                 next_state, _, done = eval_game.step(action)
                 state = next_state
             else:
@@ -223,7 +236,7 @@ def main():
     """
     agent = Agent(input_size=47, output_size=7)
     mlflow.set_tracking_uri("http://localhost:5000")
-    mlflow.set_experiment("poker_agent_v1")
+    mlflow.set_experiment("poker_agent_v3")
     if args.run_id:
         mlflow.start_run(run_id=args.run_id)
     else:
@@ -330,7 +343,8 @@ def main():
         hero = game.players[0]
         starting_stack = hero.chips
 
-        hero_state = None
+        hero_history = []
+        hero_state_seq = None
         hero_action = None
         hero_stack_at_action = 0
 
@@ -340,21 +354,22 @@ def main():
             valid_actions = game.get_valid_actions()
 
             if curr_player_index == 0:
-                if hero_state is not None:
+                hero_history.append(state)
+                padded_seq = get_padded_sequence(hero_history)
+                
+                if hero_state_seq is not None:
                     reward = 0
-                    agent.store_transition(hero_state, hero_action, reward, state, False)
-                    agent.optimize_model()
+                    agent.store_transition(hero_state_seq, hero_action, reward, padded_seq, False)
 
-                hero_state = state
+                hero_state_seq = padded_seq
                 hero_stack_at_action = hero.chips
-                hero_action = agent.select_action(state, valid_actions)
+                hero_action = agent.select_action(padded_seq, valid_actions)
 
                 next_state, _, done = game.step(hero_action)
 
                 if done:
                     reward = hero.chips - starting_stack
-                    agent.store_transition(hero_state, hero_action, reward, None, True)
-                    agent.optimize_model()
+                    agent.store_transition(hero_state_seq, hero_action, reward, None, True)
 
                 state = next_state
 
@@ -378,13 +393,15 @@ def main():
 
                 next_state, _, done = game.step(action)
 
-                if done and hero_state is not None:
+                if done and hero_state_seq is not None:
                     reward = hero.chips - starting_stack
-                    agent.store_transition(hero_state, hero_action, reward, None, True)
-                    agent.optimize_model()
+                    agent.store_transition(hero_state_seq, hero_action, reward, None, True)
 
                 state = next_state
 
+        # Optimize ONCE at the end of the hand (Massive Speedup)
+        agent.optimize_model()
+        
         profit = hero.chips - starting_stack
         total_profit += profit
 
@@ -394,7 +411,7 @@ def main():
         if agent.epsilon > agent.epsilon_min:
             agent.epsilon *= agent.epsilon_decay
 
-        if episode % 1000 == 0 and episode > args.start_episode:
+        if episode % 20000 == 0 and episode > args.start_episode:
             print(f"\n--- Running Evaluation Gauntlet (Episode {episode}) ---")
 
             gauntlet = {
@@ -423,7 +440,7 @@ def main():
 
     print("Training Complete.")
     mlflow.end_run()
-    torch.save(agent.policy_net.state_dict(), "poker_agent_v1.pth")
+    torch.save(agent.policy_net.state_dict(), "poker_agent_v3.pth")
 
 
 
