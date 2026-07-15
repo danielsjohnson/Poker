@@ -259,6 +259,21 @@ class Game():
         amount_to_call = self.table.current_bet - hero.bet_in_round
         state.append(amount_to_call / MAX_CHIPS)
 
+        # Opponent modeling stats
+        if self.tracker and villain.name in self.tracker.stats and self.tracker.stats[villain.name].hands >= 5:
+            stats = self.tracker.stats[villain.name]
+            vpip = stats.vpip_pct() / 100.0
+            pfr = stats.pfr_pct() / 100.0
+            af = min(stats.aggression_factor(), 10.0) / 10.0
+        else:
+            vpip = 0.5
+            pfr = 0.3
+            af = 0.3
+
+        state.append(vpip)
+        state.append(pfr)
+        state.append(af)
+
         return state
 
     def showdown(self):
