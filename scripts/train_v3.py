@@ -13,7 +13,8 @@ from engine.player import humanPlayer
 from engine.table import Table
 
 from agent.agent import Agent
-from agent.calling_station_v0 import calling_station_action
+from agent.novice_bot_v1 import NoviceBot, NoviceV1Policy
+from agent.maniac_bot_v1 import ManiacBot, ManiacV1Policy
 from agent.police_bot_v1 import PoliceBot
 from agent.pressure_bot_v1 import PressureBot
 from agent.punisher_bot_v1 import PunisherBot
@@ -51,9 +52,7 @@ class OpponentPolicy(Protocol):
         ...
 
 
-class CallingStationPolicy:
-    def select_action(self, ctx: DecisionContext) -> int:
-        return calling_station_action(ctx.valid_actions)
+
 
 
 class PoliceV1Policy:
@@ -127,19 +126,22 @@ class SelfPlayPolicy:
 
 def sample_villain_type() -> str:
     """
-    Opponent Distribution for Exploitative Training:
-      station (Loose-Passive):  40%
+    Opponent Distribution for Exploitative Training (V4):
+      novice (Loose-Passive):   20%
+      maniac (Hyper-Aggro):     10%
       police (Tight-Passive):   20%
-      pressure (Loose-Aggro):   20%
-      punisher (Tight-Aggro):   20%
-      self:                     0%  (Disabled for pure exploitative training)
+      pressure (Loose-Aggro):   25%
+      punisher (Tight-Aggro):   25%
+      self:                     0%  
     """
     roll = random.random()
-    if roll < 0.40:
-        return "station"
-    elif roll < 0.60:
+    if roll < 0.20:
+        return "novice"
+    elif roll < 0.30:
+        return "maniac"
+    elif roll < 0.50:
         return "police"
-    elif roll < 0.80:
+    elif roll < 0.75:
         return "pressure"
     else:
         return "punisher"
@@ -227,11 +229,12 @@ def main():
         parser.error("A --run-name is required when starting a fresh training run.")
 
     opponent_distribution = """
-    Opponent Distribution :
-      station (Loose-Passive):  40%
+    Opponent Distribution (V4 Anti-Aggro):
+      novice (Loose-Passive):   20%
+      maniac (Hyper-Aggro):     10%
       police (Tight-Passive):   20%
-      pressure (Loose-Aggro):   20%
-      punisher (Tight-Aggro):   20%
+      pressure (Loose-Aggro):   25%
+      punisher (Tight-Aggro):   25%
       self:                     0%  
     """
     agent = Agent(input_size=47, output_size=7)
@@ -262,6 +265,8 @@ def main():
     trap = TrapBot()
     pressure = PressureBot()
     police = PoliceBot()
+    novice = NoviceBot()
+    maniac = ManiacBot()
 
     mlflow.log_params({
         "episodes_target": EPISODES,
@@ -290,7 +295,8 @@ def main():
         print(">>> Info: Starting training from scratch to establish a clean baseline.")
 
     policies: Dict[str, OpponentPolicy] = {
-        "station": CallingStationPolicy(),
+        "novice": NoviceV1Policy(novice),
+        "maniac": ManiacV1Policy(maniac),
         "police": PoliceV1Policy(police),
         "punisher": PunisherV1Policy(punisher),
         "trap": TrapV1Policy(trap),
@@ -415,7 +421,8 @@ def main():
             print(f"\n--- Running Evaluation Gauntlet (Episode {episode}) ---")
 
             gauntlet = {
-                "station": CallingStationPolicy(),
+                "novice": NoviceV1Policy(novice),
+                "maniac": ManiacV1Policy(maniac),
                 "police": PoliceV1Policy(police),
                 "pressure": PressureV1Policy(pressure),
                 "punisher": PunisherV1Policy(punisher)
